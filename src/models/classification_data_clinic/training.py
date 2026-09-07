@@ -1,11 +1,26 @@
 import torch
 from torch import nn
 import wandb
+from pathlib import Path
 from dataloaders.data_loader_data import Loader
 import time
 import sys
 import os
 import numpy as np
+
+
+def _wandb_credentials_cached() -> bool:
+    """True si hay una sesión de `wandb login` ya cacheada en `~/.netrc`.
+
+    Evita que wandb.init() bloquee pidiendo login interactivo o falle si no
+    hay credenciales configuradas: si no hay sesión cacheada, la corrida cae
+    a modo "offline" en vez de fallar/preguntar (ver también
+    src/tracking.py:_wandb_credentials_cached en FedMammoBench).
+    """
+    netrc_path = Path.home() / ".netrc"
+    if not netrc_path.is_file():
+        return False
+    return "api.wandb.ai" in netrc_path.read_text()
 from metrics import Metrics
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import pandas as pd
@@ -35,14 +50,17 @@ class TrainModel():
 		dir_save_models = os.path.join(options.result_dir, options.exp_name, 'Saved_Models')
 		os.makedirs(dir_save_models, exist_ok=True)
 		
-		# Initialize wandb
+		# Initialize wandb -- sin `entity` fijo: usa la cuenta con la que se haya
+		# corrido `wandb login` en esta máquina. Sin sesión cacheada, cae a
+		# modo offline en vez de bloquear pidiendo login o fallar. `dir` apunta
+		# a la carpeta de la corrida en vez de una ruta personal fija.
 		wandb.init(
 			project = "INC-Final-Project",
-			entity  = "kevin-osorno-castillo",
 			name    = options.exp_name,
 			config  = vars(options),
 			tags    = options.tag_exp,
-			dir     = "/home/imagenesmedicas/Documentos"
+			dir     = os.path.join(options.result_dir, options.exp_name),
+			mode    = "online" if _wandb_credentials_cached() else "offline",
 		)
 
 		# Initialize model

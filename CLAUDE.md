@@ -25,7 +25,7 @@ conda env create -f environment.yml
 conda activate inc-combined
 ```
 
-Key deps: Python 3.10, PyTorch 2.9.1 (CUDA 12.8 wheels), `ultralytics` (YOLO), `pydicom`, `scikit-image`, `scikit-learn`, `opencv`, PySide6 (GUI libs, currently unused by any script in this repo). Training scripts log to **Weights & Biases** — a wandb account/API key must be configured (`wandb login`) before running any `training.py`/`train.py`, or logging calls will fail/prompt.
+Key deps: Python 3.10, PyTorch 2.9.1 (CUDA 12.8 wheels), `ultralytics` (YOLO), `pydicom`, `scikit-image`, `scikit-learn`, `opencv`, PySide6 (GUI libs, currently unused by any script in this repo). Training scripts log to **Weights & Biases**. Each `training.py`/`train.py` has a local `_wandb_credentials_cached()` helper (same idea as `FedMammoBench`'s `src/tracking.py`) that checks `~/.netrc` for a cached `wandb login` session and passes `mode="online"` if found, else `mode="offline"` — so runs never block on an interactive login prompt or fail outright when no account is configured; run `wandb login` first if you want runs actually uploaded. `wandb.init()` no longer hardcodes an `entity` — it logs to whatever account is cached locally.
 
 There is no lint config, no test suite, and no packaging (`setup.py`/`pyproject.toml`) in this repo — nothing to run for "build" or "test".
 

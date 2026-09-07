@@ -1,13 +1,35 @@
 from ultralytics import YOLO
 import wandb
+from pathlib import Path
+
+
+def _wandb_credentials_cached() -> bool:
+    """True si hay una sesión de `wandb login` ya cacheada en `~/.netrc`.
+
+    Evita que wandb.init() bloquee pidiendo login interactivo o falle si no
+    hay credenciales configuradas: si no hay sesión cacheada, la corrida cae
+    a modo "offline" en vez de fallar/preguntar (ver también
+    src/tracking.py:_wandb_credentials_cached en FedMammoBench).
+    """
+    netrc_path = Path.home() / ".netrc"
+    if not netrc_path.is_file():
+        return False
+    return "api.wandb.ai" in netrc_path.read_text()
+
 
 def train(options):
-    
+
     # Inicializar el modelo YOLO
     model = YOLO(options.model_path)
-    
-    # Inicializar Weights & Biases
-    wandb.init(project="mammo-yolov11", name=options.experiment_name, config=vars(options))
+
+    # Inicializar Weights & Biases -- sin cuenta fija: usa la sesión de
+    # `wandb login` cacheada en esta máquina, o cae a modo offline si no hay.
+    wandb.init(
+        project = "mammo-yolov11",
+        name    = options.experiment_name,
+        config  = vars(options),
+        mode    = "online" if _wandb_credentials_cached() else "offline",
+    )
     
     # Iniciar el entrenamiento del modelo con los parámetros especificados
     model.train(

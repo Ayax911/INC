@@ -40,6 +40,7 @@ def get_options():
     parser.add_argument("--activation_image_model", type=str, default="ReLU", choices=activation_choices, help="Función de activación interna del modelo de imagen: %(choices)s")
     parser.add_argument("--image_model",            type=str, default="ResNet", choices=images_model_choices, help="Seleccione el modelo generador a utilizar: %(choices)s")
     parser.add_argument("--path_image_model",       type=str, default=path_model, help="Ruta al archivo de pesos del modelo preentrenado")
+    parser.add_argument("--pretrained",             help="Inicializar el backbone de imagen con los pesos ImageNet de torchvision? (ignora --path_image_model si se activa)", default=False, action="store_true")
     parser.add_argument("--num_freeze",             type = int, default=5, help="Congelar la base del modelo?", )
     
     # Configuration of final model
