@@ -18,9 +18,14 @@ class MLP_Final_Model(nn.Module):
         
         self.options = options
         
+        # Si se pide --pretrained, se usan los pesos ImageNet de torchvision y se ignora
+        # el checkpoint de --path_image_model (evita que uno sobreescriba al otro).
+        weigths_file = None if options.pretrained else options.path_image_model
+
         self.image_model = get_image_model(
             model_name      = options.image_model,
-            weigths_file    = options.path_image_model,
+            weigths_file    = weigths_file,
+            pretrained      = options.pretrained,
         )
         
         self.clinic_model = MLP(

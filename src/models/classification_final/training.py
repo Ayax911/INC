@@ -1,11 +1,26 @@
 import torch
 from torch import nn
 import wandb
+from pathlib import Path
 from dataloaders.dataloader_images import Loader
 import time
 import sys
 import os
 import numpy as np
+
+
+def _wandb_credentials_cached() -> bool:
+    """True si hay una sesión de `wandb login` ya cacheada en `~/.netrc`.
+
+    Evita que wandb.init() bloquee pidiendo login interactivo o falle si no
+    hay credenciales configuradas: si no hay sesión cacheada, la corrida cae
+    a modo "offline" en vez de fallar/preguntar (ver también
+    src/tracking.py:_wandb_credentials_cached en FedMammoBench).
+    """
+    netrc_path = Path.home() / ".netrc"
+    if not netrc_path.is_file():
+        return False
+    return "api.wandb.ai" in netrc_path.read_text()
 from metrics import Metrics
 import pandas as pd
 from sklearn.metrics import confusion_matrix, roc_curve, auc
@@ -26,13 +41,15 @@ class TrainModel():
 		os.makedirs(os.path.join(options.result_dir, options.exp_name, "Saved_Models"), exist_ok=True)
 
 		
-		# Initialize wandb
+		# Initialize wandb -- sin `entity` fijo: usa la cuenta con la que se haya
+		# corrido `wandb login` en esta máquina. Sin sesión cacheada, cae a
+		# modo offline en vez de bloquear pidiendo login o fallar.
 		wandb.init(
 			project = "INC-Classification-Images",
-			entity  = "kevin-osorno-castillo",
 			name    = options.exp_name,
 			config  = vars(options),
 			tags    = options.tag_exp,
+			mode    = "online" if _wandb_credentials_cached() else "offline",
 		)
 
 		# Initialize model, print summary and save configuration
@@ -57,7 +74,7 @@ class TrainModel():
 		self.criterion.to(self.device)
 		
 		# Get loaders
-		loader 				= Loader(options.images_dir, options.csv_data_path, options.augmentation)
+		loader 				= Loader(options.images_dir, options.csv_data_path, options.augmentation, options.img_size)
 		self.train_loader 	= loader.train_dataloader(batch_size=options.batch_size)
 		self.val_loader 	= loader.val_dataloader(batch_size=options.batch_size)
 		self.test_loader 	= loader.test_dataloader(batch_size=options.batch_size)

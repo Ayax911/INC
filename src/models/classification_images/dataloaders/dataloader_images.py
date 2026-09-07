@@ -23,12 +23,13 @@ class ImageDataset(Dataset):
         augmentation (bool, optional): Apply random augmentations to images. Defaults to False.
     """
     
-    def __init__(self, path_images:str, path_data:str, transforms: T.Compose = None):
-        
-        self.transforms     = transforms        
+    def __init__(self, path_images:str, path_data:str, transforms: T.Compose = None, img_size: tuple = (224, 224)):
+
+        self.transforms     = transforms
         self.data           = pd.read_csv(path_data)
         self.path_images    = path_images
-                
+        self.img_size       = img_size
+
     def __getitem__(self, index):
         """
         Return a pair of input and output images.
@@ -40,10 +41,19 @@ class ImageDataset(Dataset):
             tuple: Input and output images, and the image name.
         """
         sample      = index % len(self.data)
-        
+
         # Load image
         name_image  = self.data.iloc[sample, 0]
-        im_input_   = np.load(os.path.join(self.path_images, name_image))
+        image_path  = os.path.join(self.path_images, name_image)
+        ext         = os.path.splitext(image_path)[1].lower()
+
+        if ext in (".tif", ".tiff"):
+            # (width, height) para PIL, self.img_size viene como (height, width)
+            im_input_ = Image.open(image_path).convert("RGB").resize((self.img_size[1], self.img_size[0]))
+            im_input_ = np.array(im_input_)
+        else:
+            im_input_ = np.load(image_path)
+
         im_input_   = self.transforms(im_input_)
         
         target      = self.data.iloc[sample, 1]
@@ -71,8 +81,8 @@ class Loader:
         augmentation (bool, optional): Apply random augmentations to images. Defaults to False.
     """
 
-    def __init__(self, images_dir: str, data_dir: str,  augmentation: bool = False):
-        
+    def __init__(self, images_dir: str, data_dir: str,  augmentation: bool = False, img_size: tuple = (224, 224)):
+
         self.images_dir = images_dir
 
         # Define input and output paths
@@ -80,6 +90,7 @@ class Loader:
         self.train_data = os.path.join(data_dir, "train_clinical_data.csv")
         self.test_data  = os.path.join(data_dir, "test_clinical_data.csv")
         self.val_data   = os.path.join(data_dir, "val_clinical_data.csv")
+        self.img_size   = img_size
         
         
         self.transforms_train = T.Compose([
@@ -99,18 +110,21 @@ class Loader:
             path_images     = self.images_dir,
             path_data       = self.train_data,
             transforms      = self.transforms_train if augmentation else self.transforms_test,
+            img_size        = self.img_size,
         )
 
         self.test_dataset = ImageDataset(
             path_images     = self.images_dir,
             path_data       = self.test_data,
             transforms      = self.transforms_test,
+            img_size        = self.img_size,
         )
-        
+
         self.val_dataset = ImageDataset(
             path_images     = self.images_dir,
             path_data       = self.val_data,
             transforms      = self.transforms_test,
+            img_size        = self.img_size,
         )
 
     def train_dataloader(self, batch_size):

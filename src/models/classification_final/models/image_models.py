@@ -1,10 +1,15 @@
-from torchvision.models import resnet50, densenet121, inception_v3
+from torchvision.models import (
+    resnet50, ResNet50_Weights,
+    densenet121, DenseNet121_Weights,
+    inception_v3, Inception_V3_Weights,
+)
 from torch import nn
 import torch
 
 def get_image_model(
         model_name:str          = "ResNet",
-        weigths_file:str        = None) -> nn.Module:
+        weigths_file:str        = None,
+        pretrained:bool         = False) -> nn.Module:
     """
     Function to get the model based on the given name.
 
@@ -12,18 +17,20 @@ def get_image_model(
         model_name (str)        : Name of the model to be retrieved.
         weigths_file (str)      : Path to the weights file to load into the model.
         freeze_backbone (bool)  : Whether to freeze the backbone of the model or not.
+        pretrained (bool)       : Si es True, inicializa el backbone con los pesos ImageNet de torchvision.
+            Si además se entrega `weigths_file`, ese checkpoint se carga después y sobreescribe los pesos ImageNet.
     Returns:
         torch.nn.Module: The model class corresponding to the given name.
     """
-    
+
     device         = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+
     if(model_name == "ResNet"):
-        base_model      = ResNetModel()
+        base_model      = ResNetModel(pretrained=pretrained)
     elif(model_name == "DenseNet"):
-        base_model      = DenseNetModel()
+        base_model      = DenseNetModel(pretrained=pretrained)
     elif(model_name == "Inception"):
-        base_model      = InceptionModel()
+        base_model      = InceptionModel(pretrained=pretrained)
     else:
         raise ValueError(f"Model {model_name} not supported. Please choose from 'ResNet', 'DenseNet', or 'Inception'.")
     
@@ -49,10 +56,11 @@ class ResNetModel(nn.Module):
     The model is designed to be used as a backbone for further classification tasks.
     """
 
-    def __init__(self):
+    def __init__(self, pretrained: bool = False):
         super(ResNetModel, self).__init__()
-        
-        base_model      = resnet50(pretrained=False)
+
+        weights         = ResNet50_Weights.IMAGENET1K_V2 if pretrained else None
+        base_model      = resnet50(weights=weights)
         self.features   = base_model.fc.in_features
         encoder_layers  = list(base_model.children())
         self.backbone   = nn.Sequential(*encoder_layers[:9])
@@ -70,10 +78,11 @@ class DenseNetModel(nn.Module):
     The model is designed to be used as a backbone for further classification tasks.
     """
 
-    def __init__(self):
+    def __init__(self, pretrained: bool = False):
         super(DenseNetModel, self).__init__()
-        
-        base_model          = densenet121(pretrained=False)
+
+        weights             = DenseNet121_Weights.IMAGENET1K_V1 if pretrained else None
+        base_model          = densenet121(weights=weights)
         encoder_layers      = list(base_model.children())
         self.backbone       = nn.Sequential(*encoder_layers[:-1])
         self.global_pool    = nn.AdaptiveAvgPool2d((1, 1))
@@ -92,10 +101,15 @@ class InceptionModel(nn.Module):
     The model is designed to be used as a backbone for further classification tasks.
     """
 
-    def __init__(self):
+    def __init__(self, pretrained: bool = False):
         super(InceptionModel, self).__init__()
-        
-        base_model          = inception_v3(pretrained=False, aux_logits=False)
+
+        # Los pesos ImageNet de torchvision solo se pueden cargar con aux_logits=True;
+        # se reemplaza esa rama por Identity para no romper el ensamblado secuencial del backbone.
+        weights             = Inception_V3_Weights.IMAGENET1K_V1 if pretrained else None
+        base_model          = inception_v3(weights=weights, aux_logits=pretrained)
+        if pretrained:
+            base_model.AuxLogits = nn.Identity()
         encoder_layers      = list(base_model.children())
         self.backbone       = nn.Sequential(*encoder_layers[:-1])
     

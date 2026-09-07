@@ -5,11 +5,16 @@ from types import SimpleNamespace
 from models.mlp_models import MLP
 
 def get_model(options:dict):
-    
+
+    # Si se pide --pretrained, se usan los pesos ImageNet de torchvision y se ignora
+    # el checkpoint de --path_image_model (evita que uno sobreescriba al otro).
+    weigths_file = None if options.pretrained else options.path_image_model
+
     image_model = get_image_model(
         model_name      = options.image_model,
-        weigths_file    = options.path_image_model,
-        num_freeze      = options.num_freeze
+        weigths_file    = weigths_file,
+        num_freeze      = options.num_freeze,
+        pretrained      = options.pretrained,
     )
     
     classifier  = MLP(input_size=image_model.features, hidden_layers=options.hidden_layers, output_size=options.output_size, activation=options.activation, dropout=options.dropout)
