@@ -1,32 +1,39 @@
 """Convierte el dataset de FedMammoBench al formato que consume classification_images.
 
 Puente de datos para la comparación INC vs FedMammoBench con hiperparámetros
-idénticos (ver ../../run_comparativa.sh). Produce dos cosas a partir de UN
+idénticos (ver ../../run.sh). Produce dos cosas a partir de UN
 manifest de FedMammoBench:
 
-  1. Un directorio de parches `.npy` (224, 224, 3) float32 -- lo que espera
-     `--images_dir`.
-  2. `train_clinical_data.csv`, `val_clinical_data.csv` y
+  1. Los tres CSV de splits, siempre.
+  2. Opcionalmente (`--formato npy`) un directorio de parches `.npy`
+     (224, 224, 3) float32 para `--images_dir`.
+
+Con el default `--formato tiff` NO se copia ninguna imagen: los CSV apuntan a los
+`.tiff` originales de FedMammoBench y `--images_dir` es su mismo `image_root`, así
+que las dos rutas de código leen literalmente el mismo archivo.
+
+Los CSV son `train_clinical_data.csv`, `val_clinical_data.csv` y
      `test_clinical_data.csv` -- lo que espera `--csv_data_path`, con los
      nombres exactos que arma `dataloaders/dataloader_images.py:Loader`.
      Columna 0 = ruta del .npy relativa a `--images_dir`, columna 1 = etiqueta
      entera (benigno=0, maligno=1), que es el orden posicional que lee
      `ImageDataset.__getitem__` (`self.data.iloc[sample, 0]` / `[sample, 1]`).
 
-POR QUÉ .npy Y NO LOS .tiff DIRECTAMENTE
-----------------------------------------
-`ImageDataset` sí acepta `.tif/.tiff`, pero por la rama
-`Image.open(path).convert("RGB")`. Las imágenes de FedMammoBench son TIFF
-float de un canal (modo PIL `"F"`) ya normalizadas a [0, 1] o [-1, 1], y PIL
-convierte `F -> RGB` recortando a enteros 0..255, no reescalando: toda imagen
-en [0, 1] sale completamente negra (comprobado: min=max=mean=0). La rama
-`np.load()` no toca los valores, así que convertir a .npy es la única forma de
-alimentar al INC con exactamente los mismos píxeles que ve FedMammoBench sin
-modificar su código de entrenamiento.
+CUÁNDO HACE FALTA --formato npy
+-------------------------------
+Ya casi nunca. `ImageDataset` detecta el modo PIL `"F"` (TIFF float de un canal,
+lo que escribe el preprocesamiento de FedMammoBench) y lo lee sin `.convert()`,
+replicando a 3 canales sobre el array -- igual que `MammoBenchDataset`.
 
-Se replica a 3 canales en disco porque el backbone ResNet50 espera 3 y
-`T.ToTensor()` sobre un array 2-D entregaría (1, H, W). Con 3 canales float32
-el dataset completo ocupa ~5 GB.
+Antes de ese soporte, la única rama para `.tiff` era
+`Image.open(path).convert("RGB")`, que sobre modo `"F"` trunca y recorta a
+enteros 0..255 en vez de reescalar: las imágenes salían COMPLETAMENTE NEGRAS
+(medido: min=max=mean=0, tanto en [0,1] como en [-1,1]). El espejo `.npy` existía
+para esquivar eso por la rama `np.load()`, que no toca los valores.
+
+Sigue disponible por si hay que correr contra una copia del dataloader anterior a
+ese arreglo. Cuesta ~5 GB: se replica a 3 canales en disco porque el backbone
+espera 3 y `T.ToTensor()` sobre un array 2-D entregaría (1, H, W).
 
 Uso:
     python3 scripts/preparar_datos_fedmammobench.py \\
@@ -71,7 +78,17 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Raíz contra la que resolver `preprocessed_image_path` del manifest",
     )
-    parser.add_argument("--out-images", required=True, help="Directorio destino de los .npy")
+    parser.add_argument(
+        "--formato",
+        default="tiff",
+        choices=["tiff", "npy"],
+        help=(
+            "tiff (default): NO copia imágenes; los CSV apuntan a los .tiff originales, que el "
+            "dataloader ya lee bien desde que soporta el modo 'F'. npy: escribe un espejo .npy "
+            "(~5 GB) -- solo hace falta con una copia del dataloader anterior a ese soporte."
+        ),
+    )
+    parser.add_argument("--out-images", help="Directorio destino de los .npy (solo con --formato npy)")
     parser.add_argument("--out-splits", required=True, help="Directorio destino de los 3 CSV")
     parser.add_argument(
         "--dtype",
@@ -103,33 +120,42 @@ def main() -> None:
         desconocidas = sorted(df.loc[df["label"].isna(), "classification"].unique())
         raise SystemExit(f"Etiquetas no reconocidas en `classification`: {desconocidas}")
 
-    # `preprocessed_image_path` viene como norm_0_1/<base>/<archivo>.tiff; se
-    # conserva esa jerarquía en el destino para no colisionar nombres entre bases.
-    df["npy_rel"] = df["preprocessed_image_path"].str.replace(r"\.tiff?$", ".npy", regex=True)
-
-    os.makedirs(args.out_images, exist_ok=True)
     os.makedirs(args.out_splits, exist_ok=True)
 
-    convertidas, saltadas = 0, 0
-    for rel_tiff, rel_npy in zip(df["preprocessed_image_path"], df["npy_rel"]):
-        dst = os.path.join(args.out_images, rel_npy)
-        if os.path.exists(dst):
-            saltadas += 1
-            continue
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        convertir_imagen(os.path.join(args.image_root, rel_tiff), dst, args.dtype)
-        convertidas += 1
-        if convertidas % 500 == 0:
-            print(f"  {convertidas} imágenes convertidas...", flush=True)
+    if args.formato == "tiff":
+        # Nada que convertir: los CSV apuntan a los .tiff tal cual, y --images_dir del
+        # INC es el mismo image_root de FedMammoBench. Las dos rutas de código leen
+        # entonces exactamente el mismo archivo, sin copia intermedia.
+        df["ruta_rel"] = df["preprocessed_image_path"]
+        print(f"Formato tiff: sin copia de imágenes; --images_dir debe ser {args.image_root}")
+    else:
+        if not args.out_images:
+            raise SystemExit("--formato npy requiere --out-images")
+        # `preprocessed_image_path` viene como norm_0_1/<base>/<archivo>.tiff; se
+        # conserva esa jerarquía en el destino para no colisionar nombres entre bases.
+        df["ruta_rel"] = df["preprocessed_image_path"].str.replace(r"\.tiff?$", ".npy", regex=True)
+        os.makedirs(args.out_images, exist_ok=True)
 
-    print(f"Imágenes: {convertidas} convertidas, {saltadas} ya existían -> {args.out_images}")
+        convertidas, saltadas = 0, 0
+        for rel_tiff, rel_npy in zip(df["preprocessed_image_path"], df["ruta_rel"]):
+            dst = os.path.join(args.out_images, rel_npy)
+            if os.path.exists(dst):
+                saltadas += 1
+                continue
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            convertir_imagen(os.path.join(args.image_root, rel_tiff), dst, args.dtype)
+            convertidas += 1
+            if convertidas % 500 == 0:
+                print(f"  {convertidas} imágenes convertidas...", flush=True)
+
+        print(f"Imágenes: {convertidas} convertidas, {saltadas} ya existían -> {args.out_images}")
 
     for split, filename in SPLIT_FILENAMES.items():
         sub = df[df["split"] == split]
         if sub.empty:
             raise SystemExit(f"El manifest no tiene filas con split={split!r}")
         destino = os.path.join(args.out_splits, filename)
-        sub[["npy_rel", "label"]].to_csv(destino, index=False, header=["image", "label"])
+        sub[["ruta_rel", "label"]].to_csv(destino, index=False, header=["image", "label"])
         n_pos = int(sub["label"].sum())
         print(f"{filename}: {len(sub)} filas (benigno={len(sub) - n_pos}, maligno={n_pos}) -> {destino}")
 

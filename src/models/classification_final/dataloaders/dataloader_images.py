@@ -52,9 +52,28 @@ class ImageDataset(Dataset):
         ext         = os.path.splitext(image_path)[1].lower()
 
         if ext in (".tif", ".tiff"):
+            image = Image.open(image_path)
             # (width, height) para PIL, self.img_size viene como (height, width)
-            im_input_ = Image.open(image_path).convert("RGB").resize((self.img_size[1], self.img_size[0]))
-            im_input_ = np.array(im_input_)
+            target_size = (self.img_size[1], self.img_size[0])
+
+            if image.mode == "F":
+                # TIFF float de 32 bits y un solo canal, ya normalizado en disco
+                # (ej. el preprocesamiento de FedMammoBench, que escribe [0,1] o [-1,1]).
+                # NO se puede usar .convert("RGB"): al pasar de modo "F" PIL trunca y
+                # recorta a enteros 0..255 en vez de reescalar, así que una imagen en
+                # [0,1] -- o en [-1,1] -- sale COMPLETAMENTE NEGRA (medido: min=max=0).
+                # El resize sí interpola los floats tal cual, y la réplica a 3 canales
+                # se hace después sobre el array, no vía PIL. Mismo criterio que
+                # MammoBenchDataset de FedMammoBench (src/datasets/dataset.py).
+                # ToTensor() deja los valores intactos para float: no divide por 255.
+                image = image.resize(target_size, Image.BILINEAR)
+                im_input_ = np.array(image, dtype=np.float32)
+                if im_input_.ndim == 2:
+                    im_input_ = np.repeat(im_input_[:, :, None], 3, axis=2)
+            else:
+                # TIFF de 8 bits: la ruta de siempre. Acá convert("RGB") sí corresponde,
+                # y ToTensor() reescala 0..255 -> [0,1] después.
+                im_input_ = np.array(image.convert("RGB").resize(target_size))
         else:
             im_input_ = np.load(image_path)
 
