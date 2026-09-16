@@ -67,6 +67,59 @@ For `classification_final`, the clinical-MLP checkpoint passed via `--path_clini
 - `--csv_data_path` / `--data_clinic_path` points to a **directory**, not a file, and must contain exactly `train_*.csv`, `val_*.csv`, `test_*.csv` (exact filenames differ slightly per subproject — check its dataloader/README). Feature columns must be identical and same-order across the three splits, numeric only (no NaN, categoricals pre-encoded).
 - `--images_dir` (image-based subprojects) contains `.npy` patch arrays; the CSV's ID/filename column must match `.npy` filenames exactly. Patches are expected pre-resized (no resize in the loader for `classification_final`/`classification_images`).
 
+## Reference: metrics/evaluation/W&B in the sibling FedMammoBench project
+
+`../FedMammoBench` (a separate federated + centralized mammography-classifier project, not part of this
+repo) has a more structured metrics/tracking layer than this project's four subprojects — each of which
+reimplements its own metrics/eval loop from scratch. Worth consulting as a reference pattern if asked to
+make this repo's training/eval code less duplicated, since this repo's `_wandb_credentials_cached()`
+helper (see "Environment setup" above) is already a direct copy of FedMammoBench's `src/tracking.py`:
+
+- **Metrics**: `src/metrics.py` builds a `torchmetrics.MetricCollection` (accuracy, AUROC,
+  sensitivity/recall, specificity, F1, F1-macro via a custom `BinaryMacroF1Score`, precision), computed
+  once per split by `evaluate()`/`evaluate_checkpoint()` (`src/train/evaluation.py`) — always reloading
+  the *best* checkpoint, never the model's end-of-training state. `f1_macro` (not `f1`) is used as the
+  checkpoint-selection / early-stopping metric, because plain `f1` (positive class only) can sit at
+  exactly `0.0` for several epochs while the backbone is frozen, and `EarlyStopping` never resets its
+  patience counter on a flat `0.0`.
+- **Extra diagnostic metrics**: `src/reporting.py:compute_confusion_matrix_metrics()` derives everything
+  else computable from the confusion matrix (NPV, MCC, Cohen's kappa, likelihood ratios, balanced
+  accuracy, etc., all prefixed `cm_`) once at the end, over full-test predictions from
+  `predict_on_loader()` — not inside the per-epoch training loop.
+- **Persistence** (`src/tracking.py:MetricsLogger`): one class writes to three destinations per run —
+  `metrics.csv` (one row per epoch; the file/writer open lazily on the first `log()` call specifically so
+  that re-evaluating an already-trained run via `evaluate.py` doesn't truncate its committed history),
+  TensorBoard event files, and W&B (`log_summary()` for one-shot end-of-run values instead of `log()`, so
+  they land in the run's summary rather than polluting the epoch time series). `run_dir/<split>/`
+  (`val/`, `test/`) additionally gets `metrics.json`, `confusion_matrix_metrics.json`, `predictions.csv`
+  (`y_true,y_pred,y_prob`), `confusion_matrix.png`, `roc_curve.png` — plus `metrics_by_database.json` and
+  two more plots when per-database manifests are configured. `metrics.csv`/`metrics.json`/
+  `predictions.csv`/`plots/*.png` are committed as the results record; checkpoints and TensorBoard event
+  files are gitignored.
+- **W&B config**: a single `train.wandb_project` config field (`None` disables W&B entirely — `wandb` is
+  never even imported in that case). Auth is a shared team service account cached in `~/.netrc`;
+  `MetricsLogger` checks `"api.wandb.ai" in ~/.netrc` and silently falls back to `mode="offline"` instead
+  of blocking a run — exactly the "never block on missing credentials" behavior this repo's own
+  `_wandb_credentials_cached()` reproduces.
+
+`classification_images` and `classification_final` now replicate several of these pieces (added on top of
+the existing training loop without changing its decisions — same loss, optimizer, early-stopping
+criterion, and existing wandb keys/values as before): a new `reporting_extras.py` in each subproject dir
+(`EpochLogger` for `metrics.csv` + TensorBoard per epoch, `compute_extra_metrics()` for AUC/F1-macro/NPV/
+MCC/kappa/likelihood ratios, `save_metrics_json()`/`save_predictions_csv()`). `training.py`'s old
+`test_model()` was factored into a shared `_evaluate_and_report(loader, stage, dir_name)` (test's own
+output — `Results/test_summary.csv`, `confusion_matrix.png`, `roc_curve.png`, the wandb keys logged — is
+byte-identical to before); a new `validate_model_full()` calls the same helper on `val_loader`, writing
+to `Results_Val/`. Both also now upload confusion-matrix/ROC images and the predictions table to the W&B
+run's summary (`wandb.summary.update()` / `wandb.Image()` / `wandb.Table()`), which the original code
+didn't do. `classification_data_clinic` and `detection` were intentionally left untouched. This closed
+several — not all — of the gaps in the comparison above; `classification_images`/`classification_final`
+still don't have `metrics.csv` compared against a `run_dir`/experiment-tracking abstraction the way
+FedMammoBench's `eval_pipeline.py` orchestrates it, and per-database breakdown was not added.
+`environment.yml` gained `wandb`, `seaborn`, `torchmetrics`, `tensorboard` as pip deps — all four were
+already imported by this code (directly or via the pre-existing `metrics.py`) but were missing from the
+env file.
+
 ## Known gaps / inconsistencies to be aware of
 
 - The root `README.md` documents a `src/data/` package (`dataset_generator.py`, `data_validator.py`, `dataset_splitter.py`) that **does not exist in this checkout**. `scripts/preprocesar-datos.py` imports from it and will fail (`ModuleNotFoundError`) until that package is added/restored.
