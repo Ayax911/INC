@@ -1,0 +1,37 @@
+activation: LeakyReLU
+activation_image_model: ReLU
+augmentation: True
+b1: 0.5
+b2: 0.999
+batch_size: 64
+channels: 3
+class_balance: True
+csv_data_path: /home/labmirp/Escritorio/FL-JULIAN/INC/data/fedmammobench_splits/norm_neg1_1
+dropout: 0.2
+exp_name: camilo_hparams_fedmammobench_data
+gamma: 2.0
+hidden_layers: [1024, 512]
+image_model: ResNet
+images_dir: /home/labmirp/Escritorio/FL-JULIAN/FedMammoBench/data/preproccesed_julian
+img_size: (224, 224)
+init_epoch: 0
+loss: BCE
+lr: 0.0001
+min_lr: 1e-06
+n_epochs: 200
+neg_weight: 0.7593
+num_freeze: 159
+output_size: 2
+path_image_model: /mnt/Datos/Master_Camilo/DL/weights/RadImageNet_pytorch/ResNet50.pt
+patience_early: 100
+pos_weight: 1.4642
+pretrained: False
+result_dir: /home/labmirp/Escritorio/FL-JULIAN/INC/results
+tag_exp: ['Classification Images', 'comparativa-fedmammobench']
+test: False
+train: True
+wandb_group: None
+wandb_project: fedmammobench2.0
+
+--------------- Time Training ------------------
+Tiempo de entrenamiento: 1 horas y 44 minutos
