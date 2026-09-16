@@ -60,6 +60,15 @@ dependencies:
       - polars==1.36.1
       - polars-runtime-32==1.36.1
 
+      # Ya se importaban en el código (metrics.py, training.py) sin estar
+      # declaradas acá -- necesarias para las 6 métricas por torchmetrics,
+      # el tracking de experimentos, las gráficas de test/val, y el
+      # metrics.csv/TensorBoard por época (ver reporting_extras.py).
+      - wandb
+      - seaborn
+      - torchmetrics
+      - tensorboard
+
       # Ultralytics (ambos entornos)
       - ultralytics==8.3.235
       - ultralytics-thop==2.0.18

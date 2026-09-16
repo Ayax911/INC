@@ -29,7 +29,8 @@ import matplotlib.pyplot as plt
 from models.get_model import MLP_Final_Model
 from early_stopping import EarlyStopping
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
-from losses import get_loss 
+from losses import get_loss
+from reporting_extras import EpochLogger, compute_extra_metrics, save_metrics_json, save_predictions_csv
 
 class TrainModel():
 
@@ -40,7 +41,11 @@ class TrainModel():
   
 		os.makedirs(os.path.join(options.result_dir, options.exp_name, "Saved_Models"), exist_ok=True)
 
-		
+		# metrics.csv por época + TensorBoard, adicional a lo que ya se loguea a wandb
+		# más abajo -- ver reporting_extras.EpochLogger.
+		self.epoch_logger = EpochLogger(os.path.join(options.result_dir, options.exp_name))
+
+
 		# Initialize wandb -- sin `entity` fijo: usa la cuenta con la que se haya
 		# corrido `wandb login` en esta máquina. Sin sesión cacheada, cae a
 		# modo offline en vez de bloquear pidiendo login o fallar.
@@ -191,6 +196,7 @@ class TrainModel():
 			self.epoch_stats["lr"] = self.optimizer.param_groups[0]['lr']
 			wandb.log(self.epoch_stats)
 			self.validation(plot=False)
+			self.epoch_logger.log(self.epoch, self.epoch_stats)
 			self.scheduler.step()
 
 			if self.early_stopping.early_stop:
@@ -235,7 +241,8 @@ class TrainModel():
 			f.write("Tiempo de entrenamiento: {} horas y {} minutos\n".format(int(hours), int(minutes)))
 
 		print("\n [✓] -> Done Training! \n\n")
-	
+
+		self.epoch_logger.close()
 
 	def validation(self, plot=False):
 
@@ -282,17 +289,52 @@ class TrainModel():
 		wandb.log(self.epoch_stats)
 
 	def test_model(self):
-     
+
 		# Load the best model
 		self.model.load_state_dict(torch.load(os.path.join(self.options.result_dir, self.options.exp_name, "Saved_Models", f"Best_Model.pth")))
 		print("Modelo cargado Mejor")
+		self._evaluate_and_report(self.test_loader, "Test", "Results")
+
+	def validate_model_full(self):
+		"""Evaluación completa de validación con el mejor checkpoint, igual que `test_model()`.
+
+		A diferencia de `validation()` (llamada por época dentro de `train_model()`,
+		solo para decidir early stopping), esto corre una sola vez al final,
+		siempre recargando `Best_Model.pth` -- nunca el estado en el que haya
+		quedado `self.model` al terminar el entrenamiento -- y produce en
+		`Results_Val/` los mismos artefactos que `test_model()` deja en `Results/`.
+		"""
+
+		self.model.load_state_dict(torch.load(os.path.join(self.options.result_dir, self.options.exp_name, "Saved_Models", f"Best_Model.pth")))
+		print("Modelo cargado Mejor (evaluación completa de validación)")
+		self._evaluate_and_report(self.val_loader, "Val", "Results_Val")
+
+	def _evaluate_and_report(self, loader, stage, dir_name):
+		"""Evalúa `self.model` (ya con los pesos del mejor checkpoint) sobre `loader` y persiste/reporta todo.
+
+		Misma lógica que ya usaba `test_model()` antes de esta factorización --
+		reusada acá para no duplicarla al agregar `validate_model_full()`. Los
+		artefactos que ya existían (test_summary.csv, confusion_matrix.png,
+		roc_curve.png, el wandb.log con las 6 métricas) quedan exactamente
+		iguales para `stage="Test"`; lo nuevo (metrics.json,
+		confusion_matrix_metrics.json, predictions.csv, imágenes/tabla subidas
+		a W&B) se agrega al final sin tocar lo anterior.
+
+		Args:
+			loader: DataLoader a evaluar (`self.test_loader` o `self.val_loader`).
+			stage: prefijo de las métricas ("Test" o "Val") -- debe coincidir con
+				las claves que devuelve `self.metrics.get_metrics()`.
+			dir_name: subcarpeta bajo `<result_dir>/<exp_name>/` donde se guardan
+				los artefactos ("Results" o "Results_Val").
+		"""
+
 		metrics_img = {
-			"Test_Accuracy"       : [],
-			"Test_Sensitivity"    : [],
-			"Test_Specificity"    : [],
-			"Test_F1-Score"       : [],
-   			"Test_BCE-Loss"   	: [],
-			"Test_VPP"            : []
+			f"{stage}_Accuracy"    : [],
+			f"{stage}_Sensitivity" : [],
+			f"{stage}_Specificity" : [],
+			f"{stage}_F1-Score"    : [],
+			f"{stage}_BCE-Loss"    : [],
+			f"{stage}_VPP"         : []
 		}
 
 		# Set the generator to training mode
@@ -304,7 +346,7 @@ class TrainModel():
 		with torch.no_grad():
 
 			# Iterate over the training data
-			for batch_idx, data in enumerate(self.test_loader):
+			for batch_idx, data in enumerate(loader):
 
 				inputs, data_clinic, targets   	= data
 				inputs, data_clinic, targets    = inputs.to(self.device), data_clinic.to(self.device), targets.to(self.device)
@@ -314,29 +356,29 @@ class TrainModel():
 				logits 		= self.model(inputs, data_clinic)
 				probs 		= torch.softmax(logits, dim=1)
 				preds  		= torch.argmax(probs, dim=1)
-	
+
 				# Acumulamos para ROC y confusion
 				all_targets.append(targets.view(-1).cpu().numpy())
 				all_probs.append(probs.cpu().numpy())
 
 				# Calculate the metrics
-				metrics = self.metrics.get_metrics(preds, targets.long(), probs, "Test")
-				
+				metrics = self.metrics.get_metrics(preds, targets.long(), probs, stage)
+
 				for key, value in metrics.items():
 					try:
 						metrics_img[key].append(value.item())
 					except:
 						metrics_img[key].append(value)
-   
+
 		# Convertir listas planas
 		y_true = np.concatenate(all_targets)
 		y_prob = np.concatenate(all_probs)
 		y_pred = np.argmax(y_prob, axis=1)
 		#y_pred = (y_prob > 0.5).astype(int)
 
-		dir_save = os.path.join(self.options.result_dir, self.options.exp_name, "Results")
+		dir_save = os.path.join(self.options.result_dir, self.options.exp_name, dir_name)
 		os.makedirs(dir_save, exist_ok=True)
-  
+
 		# Calcular la media y desviación estándar de las métricas
 		summary = {
 			metric: {
@@ -351,18 +393,11 @@ class TrainModel():
 		df_summary.index.name = "Metric"
 
 		# 3) Guarda en CSV
-		csv_path = os.path.join(dir_save, "test_summary.csv")
+		csv_path = os.path.join(dir_save, f"{stage.lower()}_summary.csv")
 		df_summary.to_csv(csv_path)
 
 		# Subir en wandb
-		wandb.log({
-			"Test_Accuracy"       : summary["Test_Accuracy"]["mean"],
-			"Test_Sensitivity"    : summary["Test_Sensitivity"]["mean"],
-			"Test_Specificity"    : summary["Test_Specificity"]["mean"],
-			"Test_F1-Score"       : summary["Test_F1-Score"]["mean"],
-			"Test_BCE-Loss"   	: summary["Test_BCE-Loss"]["mean"],
-			"Test_VPP"            : summary["Test_VPP"]["mean"]
-		})
+		wandb.log({metric: values["mean"] for metric, values in summary.items()})
 
 		print(f"✅ Resumen de métricas guardado en {csv_path}")
 		print(df_summary)
@@ -395,12 +430,30 @@ class TrainModel():
 		plt.legend(loc="lower right")
 		plt.tight_layout()
 		#plt.show()
-  
+
 		# Save ROC AUC to CSV
 		path_roc = os.path.join(dir_save, "roc_curve.png")
 		plt.savefig(path_roc, dpi=300)
 
 		print(f"✅ ROC–AUC: {roc_auc:.3f}")
+
+		# --- Artefactos adicionales: metrics.json, confusion_matrix_metrics.json,
+		# predictions.csv, e imágenes/tabla subidas al summary de W&B. No
+		# reemplazan nada de lo de arriba -- ver reporting_extras.py. ---
+		save_metrics_json({k: v["mean"] for k, v in summary.items()}, os.path.join(dir_save, "metrics.json"))
+
+		extra_metrics = compute_extra_metrics(y_true, y_pred, y_prob[:, 1])
+		save_metrics_json(extra_metrics, os.path.join(dir_save, "confusion_matrix_metrics.json"))
+
+		predictions_path = os.path.join(dir_save, "predictions.csv")
+		save_predictions_csv(y_true, y_pred, y_prob[:, 1], predictions_path)
+
+		wandb.summary.update({f"{stage}_{k}": v for k, v in extra_metrics.items()})
+		wandb.log({
+			f"{stage}/confusion_matrix": wandb.Image(path_cm),
+			f"{stage}/roc_curve": wandb.Image(path_roc),
+			f"{stage}/predictions": wandb.Table(dataframe=pd.read_csv(predictions_path)),
+		})
 
 
 import matplotlib.pyplot as plt

@@ -33,10 +33,12 @@ def main():
 
 		# Test the model
 		trainer.test_model()
-	
+		trainer.validate_model_full()
+
 	else:
 		trainer = TrainModel(options)
 		trainer.test_model()
+		trainer.validate_model_full()
 
 def print_options(options: argparse.Namespace) -> None:
 	"""
