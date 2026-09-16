@@ -13,7 +13,15 @@ class EarlyStopping:
         self.patience       = patience
         self.delta          = delta
         self.counter        = 0
-        self.best_score     = 0.0
+        # -inf y no 0.0: la condición de mejora es `metric_value < best_score + delta`,
+        # y el criterio es Val F1 de la clase positiva, que vale exactamente 0.0 mientras
+        # el modelo no prediga ningún maligno -- lo normal en las primeras épocas con un
+        # manifest desbalanceado y el backbone congelado. Con best_score=0.0 esa condición
+        # se cumplía siempre, nunca se entraba al else y NUNCA se escribía Best_Model.pth:
+        # si eso duraba `patience` épocas, el entrenamiento se cortaba sin ningún
+        # checkpoint y test_model() moría con FileNotFoundError al ir a cargarlo.
+        # Con -inf la primera época siempre deja un checkpoint de referencia.
+        self.best_score     = float("-inf")
         self.early_stop     = False
         self.dir_save       = dir_save
 
