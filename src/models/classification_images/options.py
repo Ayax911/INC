@@ -33,6 +33,8 @@ def get_options():
     parser.add_argument("--csv_data_path",      type=str, default=csv_data_path, help="Ruta de los archivos csv con la estructuracion de la base de datos")
     parser.add_argument("--result_dir",         type=str, default=result_dir, help="Direccion en donde se guardaran los resultados. Default = %(default)s")
     parser.add_argument("--tag_exp",            type=str, nargs='+', default=["Test"], help="Etiquetas de wandb para el experimento")
+    parser.add_argument("--wandb_project",      type=str, default="INC-Classification-Images", help="Proyecto de W&B. El default preserva el comportamiento anterior, cuando estaba hardcodeado en training.py. Cámbialo para dejar esta corrida en el mismo proyecto que otra (ej. una de FedMammoBench): el grupo de W&B solo agrupa DENTRO de un proyecto. Default = %(default)s")
+    parser.add_argument("--wandb_group",        type=str, default=None, help="Grupo de W&B (wandb.init(group=...)), para ver juntas varias corridas del mismo bloque. Si no se pasa, wandb lo toma de la variable de entorno WANDB_RUN_GROUP. Default = %(default)s")
     parser.add_argument("--train",              help="Entrenamiento?", default=True, action="store_true")
     parser.add_argument("--test",               help="Prueba?", default=False, action="store_true")
 

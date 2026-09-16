@@ -51,8 +51,9 @@ class TrainModel():
 		# corrido `wandb login` en esta máquina. Sin sesión cacheada, cae a
 		# modo offline en vez de bloquear pidiendo login o fallar.
 		wandb.init(
-			project = "INC-Classification-Images",
+			project = options.wandb_project,
 			name    = options.exp_name,
+			group   = options.wandb_group,
 			config  = vars(options),
 			tags    = options.tag_exp,
 			mode    = "online" if _wandb_credentials_cached() else "offline",
