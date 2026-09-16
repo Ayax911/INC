@@ -21,11 +21,14 @@ def _wandb_credentials_cached() -> bool:
     if not netrc_path.is_file():
         return False
     return "api.wandb.ai" in netrc_path.read_text()
-from metrics import Metrics
+from metrics import Metrics, build_metric_collection
 import pandas as pd
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 import seaborn as sns
+import matplotlib
+matplotlib.use("Agg")  # sin display: con el backend Qt por defecto, correr sin X11 aborta con core dump
 import matplotlib.pyplot as plt
+import reporting
 from models.get_model import get_model
 from early_stopping import EarlyStopping
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
@@ -81,6 +84,7 @@ class TrainModel():
 		
 		# Get loaders
 		loader 				= Loader(options.images_dir, options.csv_data_path, options.augmentation, options.img_size)
+		self.loader 		= loader  # evaluate_by_database() lee las rutas de loader.{val,test}_dataset.data
 		self.train_loader 	= loader.train_dataloader(batch_size=options.batch_size)
 		self.val_loader 	= loader.val_dataloader(batch_size=options.batch_size)
 		self.test_loader 	= loader.test_dataloader(batch_size=options.batch_size)
@@ -89,6 +93,13 @@ class TrainModel():
 		self.optimizer 	= torch.optim.Adam(self.model.parameters(), lr=options.lr, betas=(options.b1, options.b2))
 		self.metrics  	= Metrics(self.device)
 		self.best_loss  = 0.
+
+		# Registro con el formato de FedMammoBench (ver reporting.py): metrics.csv, plots/,
+		# val/ y test/ bajo <result_dir>/<exp_name>/, y en W&B las mismas claves train_*/val_*
+		# con step = época, para que las curvas de ambos proyectos caigan en los mismos paneles.
+		self.run_dir 		= Path(options.result_dir) / options.exp_name
+		self.history 		= []  # un dict por época, mismo contenido que metrics.csv
+		self.metrics_csv 	= reporting.MetricsCsvWriter(self.run_dir / "metrics.csv")
   
 		self.early_stopping = EarlyStopping(
 	  							patience 	= options.patience_early,
@@ -115,6 +126,11 @@ class TrainModel():
 		self.prev_time = time.time()
 
 		for self.epoch in range(self.options.init_epoch, self.options.n_epochs):
+
+			epoch_start 		= time.time()
+			train_collection 	= build_metric_collection(self.device)
+			train_loss_total 	= 0.0
+			n_train_batches 	= 0
 
 			self.epoch_stats = {
 				"Loss-BCE"	: [],
@@ -146,6 +162,13 @@ class TrainModel():
 				# Get predictions 
 				probs 	= torch.softmax(logits, dim=1)
 				preds  	= torch.argmax(probs, dim=1)
+
+				# Métricas de época estilo FedMammoBench: probabilidad de la clase positiva,
+				# acumulada en toda la época (ver build_metric_collection en metrics.py).
+				with torch.no_grad():
+					train_collection.update(probs[:, 1].detach(), targets)
+				train_loss_total += loss.item()
+				n_train_batches  += 1
 
 				# Update epoch stats
 				self.epoch_stats["Loss-BCE"].append(loss.item())
@@ -179,21 +202,25 @@ class TrainModel():
 				sys.stdout.flush()
 				sys.stdout.write('\r')
 				sys.stdout.flush()
-				
-				if batch_idx % 5 == 0:
-					step_log = {
-						"Loss-BCE"	: loss.item(),
-					}
-					wandb.log(step_log)
 	 
-			# Log epoch stats
+			# Promedios por batch de INC -- ya no van a W&B, se conservan solo porque
+			# validation() los sigue acumulando en el mismo dict.
 			for key, value in self.epoch_stats.items():
 				self.epoch_stats[key] = torch.mean(torch.tensor(value)).item()
-			
-			self.epoch_stats["epoch"] = self.epoch
-			self.epoch_stats["lr"] = self.optimizer.param_groups[0]['lr']
-			wandb.log(self.epoch_stats)
-			self.validation(plot=False)
+
+			# Una sola fila por época, mismas claves y mismo step (= época) que
+			# FedMammoBench (Trainer.fit -> MetricsLogger.log). Sin logs por batch: cualquier
+			# wandb.log() extra desalinea el step de la época.
+			lr 				= self.optimizer.param_groups[0]['lr']
+			train_metrics 	= {f"train_{k}": v.item() for k, v in train_collection.compute().items()}
+			train_metrics["train_loss"] = train_loss_total / n_train_batches
+			val_metrics 	= self.validation(plot=False)
+
+			epoch_metrics = {**train_metrics, **val_metrics, "lr": lr, "duration_seconds": round(time.time() - epoch_start, 2)}
+			wandb.log(epoch_metrics, step=self.epoch)
+			self.metrics_csv.write(self.epoch, epoch_metrics)
+			self.history.append(epoch_metrics)
+
 			self.scheduler.step()
 
 			if self.early_stopping.early_stop:
@@ -238,7 +265,39 @@ class TrainModel():
 			f.write("Tiempo de entrenamiento: {} horas y {} minutos\n".format(int(hours), int(minutes)))
 
 		print("\n [✓] -> Done Training! \n\n")
-	
+
+		self.metrics_csv.close()
+		self.save_training_curves()
+
+	def save_training_curves(self):
+		"""plots/loss_curve.png + una curva train-vs-val por métrica, igual que cli.run() de FedMammoBench."""
+		if not self.history:
+			return
+
+		best_epoch = self.early_stopping.best_epoch
+		if best_epoch is not None:
+			best_epoch -= self.options.init_epoch  # índice dentro de history, no época absoluta
+
+		plots_dir = self.run_dir / "plots"
+		loss_path = plots_dir / "loss_curve.png"
+		reporting.plot_loss_curve(
+			[m["train_loss"] for m in self.history],
+			[m["val_loss"] for m in self.history],
+			loss_path,
+			best_epoch=best_epoch,
+		)
+		wandb.log({"plots/loss_curve": wandb.Image(str(loss_path))})
+
+		for metric_key, display_name in reporting.METRIC_DISPLAY_NAMES.items():
+			curve_path = plots_dir / f"{metric_key}_curve.png"
+			reporting.plot_metric_curve(
+				[m[f"train_{metric_key}"] for m in self.history],
+				[m[f"val_{metric_key}"] for m in self.history],
+				curve_path,
+				metric_name=display_name,
+				best_epoch=best_epoch,
+			)
+			wandb.log({f"plots/{metric_key}_curve": wandb.Image(str(curve_path))})
 
 	def validation(self, plot=False):
 
@@ -251,6 +310,10 @@ class TrainModel():
 			"Val_VPP"            : []
 	  
 		}
+
+		val_collection 	= build_metric_collection(self.device)
+		val_loss_total 	= 0.0
+		n_val_batches 	= 0
 
 		# Set the generator to training mode
 		self.model.eval()
@@ -271,6 +334,13 @@ class TrainModel():
 				probs 	= torch.softmax(logits, dim=1)
 				preds  	= torch.argmax(probs, dim=1)
 
+				# val_loss con el MISMO criterio (ponderado) que train_loss, como FedMammoBench.
+				# El "Val_BCE-Loss" de Metrics.get_metrics es otra cosa: CrossEntropy sin pesos
+				# aplicada sobre probabilidades ya softmaxeadas.
+				val_collection.update(probs[:, 1], targets.long())
+				val_loss_total += self.criterion(logits, targets.long()).item()
+				n_val_batches  += 1
+
 				# Calculate the metrics
 				metrics = self.metrics.get_metrics(preds, targets.long(), probs, "Val")
 				
@@ -280,15 +350,124 @@ class TrainModel():
 		for key, value in metrics_img.items():
 			self.epoch_stats[key] = torch.mean(torch.tensor(value)).item()
 
+		# El criterio de parada NO cambia: sigue siendo el promedio por batch de Val F1 de INC.
 		self.early_stopping(self.epoch_stats["Val_F1-Score"], self.model, self.epoch)
-		self.epoch_stats["epoch"] = self.epoch_stats["epoch"]
-		wandb.log(self.epoch_stats)
+
+		val_metrics = {f"val_{k}": v.item() for k, v in val_collection.compute().items()}
+		val_metrics["val_loss"] = val_loss_total / n_val_batches
+		return val_metrics
+
+	def _predict(self, loader):
+		"""Predicciones completas de un loader SIN shuffle: y_true, y_pred, y_prob, logits y métricas estilo FMB."""
+		collection 	= build_metric_collection(self.device)
+		loss_total 	= 0.0
+		n_batches 	= 0
+		y_true, y_pred, y_prob, all_logits = [], [], [], []
+
+		self.model.eval()
+		with torch.no_grad():
+			for inputs, targets in loader:
+				inputs, targets = inputs.to(self.device).float(), targets.to(self.device).long()
+				logits 	= self.model(inputs)
+				probs 	= torch.softmax(logits, dim=1)
+				preds 	= torch.argmax(probs, dim=1)
+
+				collection.update(probs[:, 1], targets)
+				loss_total += self.criterion(logits, targets).item()
+				n_batches  += 1
+
+				y_true.extend(targets.cpu().tolist())
+				y_pred.extend(preds.cpu().tolist())
+				y_prob.extend(probs[:, 1].cpu().tolist())
+				all_logits.append(logits.cpu())
+
+		metrics = {k: v.item() for k, v in collection.compute().items()}
+		metrics["loss"] = loss_total / n_batches
+		return y_true, y_pred, y_prob, torch.cat(all_logits), metrics
+
+	def evaluate_split(self, split_name, loader, dataset):
+		"""Equivalente a eval_pipeline.evaluate_split() de FedMammoBench, más su desglose por base de datos.
+
+		Escribe en <run_dir>/<split_name>/: metrics.json, confusion_matrix_metrics.json,
+		predictions.csv, confusion_matrix.png, roc_curve.png y predictions_<db>.csv. En test
+		además metrics_by_database.json, confusion_matrix_by_database.png y
+		metrics_by_database.png. A W&B: summary <split>_*, tabla <split>/predictions e imágenes
+		<split>/* -- mismas claves que FedMammoBench.
+		"""
+		y_true, y_pred, y_prob, logits, split_metrics = self._predict(loader)
+		cm_metrics = reporting.compute_confusion_matrix_metrics(y_true, y_pred)
+		wandb.run.summary.update({f"{split_name}_{k}": v for k, v in {**split_metrics, **cm_metrics}.items()})
+
+		split_dir = self.run_dir / split_name
+		reporting.save_metrics_json(split_metrics, split_dir / "metrics.json")
+		reporting.save_metrics_json(cm_metrics, split_dir / "confusion_matrix_metrics.json")
+
+		predictions_path = split_dir / "predictions.csv"
+		reporting.save_predictions_csv(y_true, y_pred, y_prob, predictions_path)
+		wandb.log({f"{split_name}/predictions": wandb.Table(dataframe=pd.read_csv(predictions_path))})
+
+		confusion_matrix_path = split_dir / "confusion_matrix.png"
+		reporting.plot_confusion_matrix(y_true, y_pred, confusion_matrix_path)
+		wandb.log({f"{split_name}/confusion_matrix": wandb.Image(str(confusion_matrix_path))})
+
+		roc_curve_path = split_dir / "roc_curve.png"
+		reporting.plot_roc_curve(y_true, y_prob, roc_curve_path)
+		wandb.log({f"{split_name}/roc_curve": wandb.Image(str(roc_curve_path))})
+
+		# Desglose por base de datos: la base es la carpeta de la imagen en la CSV
+		# (norm_neg1_1/<db>/<archivo>.tiff). Válido porque val/test no se barajan, así que
+		# la posición i de las predicciones es la fila i de dataset.data.
+		db_names = [Path(p).parent.name for p in dataset.data.iloc[:, 0]]
+		assert len(db_names) == len(y_true), "el loader debe recorrer el dataset completo y sin shuffle"
+
+		metrics_by_db, cm_by_db = {}, {}
+		for db_name in dict.fromkeys(db_names):
+			idx = [i for i, name in enumerate(db_names) if name == db_name]
+			db_true = [y_true[i] for i in idx]
+			db_pred = [y_pred[i] for i in idx]
+			db_prob = [y_prob[i] for i in idx]
+			reporting.save_predictions_csv(db_true, db_pred, db_prob, split_dir / f"predictions_{db_name}.csv")
+
+			if split_name != "test":
+				continue  # en val solo el CSV, para calibrar umbrales por base (igual que FMB)
+
+			collection = build_metric_collection("cpu")
+			collection.update(torch.tensor(db_prob), torch.tensor(db_true))
+			db_metrics = {k: v.item() for k, v in collection.compute().items()}
+			db_metrics["loss"] = self.criterion(logits[idx].to(self.device), torch.tensor(db_true, device=self.device)).item()
+			db_cm = reporting.compute_confusion_matrix_metrics(db_true, db_pred)
+
+			wandb.run.summary.update({f"test_by_database_{db_name}_{k}": v for k, v in {**db_metrics, **db_cm}.items()})
+			metrics_by_db[db_name] = {**db_metrics, **db_cm}
+			cm_by_db[db_name] = (db_true, db_pred)
+
+		if metrics_by_db:
+			reporting.save_metrics_by_database_json(metrics_by_db, split_dir / "metrics_by_database.json")
+
+			cm_by_db_path = split_dir / "confusion_matrix_by_database.png"
+			reporting.plot_confusion_matrix_by_database(cm_by_db, cm_by_db_path)
+			wandb.log({"test/confusion_matrix_by_database": wandb.Image(str(cm_by_db_path))})
+
+			metrics_by_db_path = split_dir / "metrics_by_database.png"
+			reporting.plot_metrics_by_database(metrics_by_db, metrics_by_db_path, metric_display_names=reporting.METRIC_DISPLAY_NAMES)
+			wandb.log({"test/metrics_by_database": wandb.Image(str(metrics_by_db_path))})
+
+		print(f"{split_name.capitalize()}: {split_metrics}")
+		return split_metrics
 
 	def test_model(self):
 	 
 		# Load the best model
 		self.model.load_state_dict(torch.load(os.path.join(self.options.result_dir, self.options.exp_name, "Saved_Models", f"Best_Model.pth")))
 		print("Modelo cargado Mejor")
+
+		# Artefactos y W&B con el formato de FedMammoBench, siempre sobre Best_Model.pth.
+		self.evaluate_split("val", self.val_loader, self.loader.val_dataset)
+		self.evaluate_split("test", self.test_loader, self.loader.test_dataset)
+
+		# Lo de abajo es el reporte original de INC (Results/test_summary.csv y sus
+		# gráficas), que se conserva en disco. Ya no sube Test_* a W&B: esas métricas
+		# ahora van al summary como test_* (evaluate_split).
 		metrics_img = {
 			"Test_Accuracy"       : [],
 			"Test_Sensitivity"    : [],
@@ -356,16 +535,6 @@ class TrainModel():
 		# 3) Guarda en CSV
 		csv_path = os.path.join(dir_save, "test_summary.csv")
 		df_summary.to_csv(csv_path)
-
-		# Subir en wandb
-		wandb.log({
-			"Test_Accuracy"       : summary["Test_Accuracy"]["mean"],
-			"Test_Sensitivity"    : summary["Test_Sensitivity"]["mean"],
-			"Test_Specificity"    : summary["Test_Specificity"]["mean"],
-			"Test_F1-Score"       : summary["Test_F1-Score"]["mean"],
-			"Test_BCE-Loss"   	: summary["Test_BCE-Loss"]["mean"],
-			"Test_VPP"            : summary["Test_VPP"]["mean"]
-		})
 
 		print(f"✅ Resumen de métricas guardado en {csv_path}")
 		print(df_summary)

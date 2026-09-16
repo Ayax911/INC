@@ -24,6 +24,9 @@ class EarlyStopping:
         self.best_score     = float("-inf")
         self.early_stop     = False
         self.dir_save       = dir_save
+        # Época (base 0) del último Best_Model.pth guardado -- la marca la línea
+        # vertical "Mejor época" de las curvas de reporting.py.
+        self.best_epoch     = None
 
     def __call__(self, metric_value, model, epoch):
         
@@ -53,3 +56,4 @@ class EarlyStopping:
         
         print(f'Model {epoch} saved with {metric_value:.4f} metric value')
         self.best_score = metric_value
+        self.best_epoch = epoch
