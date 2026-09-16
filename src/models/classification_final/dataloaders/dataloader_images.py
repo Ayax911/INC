@@ -52,14 +52,18 @@ class ImageDataset(Dataset):
         ext         = os.path.splitext(image_path)[1].lower()
 
         if ext in (".tif", ".tiff"):
-            # (width, height) para PIL, self.img_size viene como (height, width)
-            im_input_ = Image.open(image_path).convert("RGB").resize((self.img_size[1], self.img_size[0]))
+            
+            # im_input_ = Image.open(image_path).convert("RGB").resize((self.img_size[1], self.img_size[0]))
+            im_input_ = Image.open(image_path).convert("RGB")
             im_input_ = np.array(im_input_)
         else:
             im_input_ = np.load(image_path)
 
+        # im_input_   = self.transforms(im_input_)
+        im_input_   = torch.from_numpy(np.ascontiguousarray(im_input_)).permute(2, 0, 1)
         im_input_   = self.transforms(im_input_)
-        
+        im_input_   = im_input_.float()
+
         target      = self.data.iloc[sample]["Etiqueta"]
         target      = torch.tensor(target, dtype=torch.long)
         
@@ -102,17 +106,26 @@ class Loader:
         self.img_size   = img_size
         
         
+        # self.transforms_train = T.Compose([
+        #     T.ToTensor(),
+        #     T.RandomHorizontalFlip(p=0.5),
+        #     T.RandomRotation(degrees=15),               # rotaciones leves
+        #     T.RandomVerticalFlip(p=0.2),                # flip vertical (suave)
+        #     RandomGaussianBlur(p=0.3,kernel_size=3,sigma=(0.1, 0.6)),
+        # ])
+
+        # self.transforms_test = T.Compose([
+        #     T.ToTensor(),
+        # ])
+
         self.transforms_train = T.Compose([
-            T.ToTensor(),
             T.RandomHorizontalFlip(p=0.5),
             T.RandomRotation(degrees=15),               # rotaciones leves
             T.RandomVerticalFlip(p=0.2),                # flip vertical (suave)
             RandomGaussianBlur(p=0.3,kernel_size=3,sigma=(0.1, 0.6)),
         ])
-        
-        self.transforms_test = T.Compose([
-            T.ToTensor(),
-        ])
+
+        self.transforms_test = T.Compose([])
 
         # Create train and test datasets
         self.train_dataset = ImageDataset(
