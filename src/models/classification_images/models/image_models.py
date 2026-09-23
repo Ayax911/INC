@@ -152,7 +152,7 @@ class InceptionModel(nn.Module):
 
 if __name__ == "__main__":
     model_name = "ResNet"
-    path_weigths = "/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/03-Challenges/01-MAMA-MIA/01-Code/RadImageNet_pytorch/01-Pytorch/ResNet50.pt"  # Path to the weights file if needed
+    path_weigths = "/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/13-PregradoJulian/Federal Learning/infraestructura federada/FedMammoBench/weights/ResNet50.pt"  # Path to the weights file if needed
     model = get_image_model(model_name, weigths_file=path_weigths, freeze_backbone=True)
     print(model)
     

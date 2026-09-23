@@ -15,10 +15,10 @@ def get_options():
     """
     
     # Default directory paths
-    images_dir          = "/home/kevin-osorno-castillo/Documentos/parches_224x224/imagenes_npy"
-    csv_data_path       = "/home/kevin-osorno-castillo/Documentos/parches_224x224/splits"
+    images_dir          = "/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/02-Databases/Mammo-Bench/c86fb00c-0fb8-4e0e-85a2-4d415f9c1ada_1a9410d8-9769-4064-a064-0160f2fd193d_DATASET-FILE_Mammo_Bench_zip_20241225112148174/Mammo_Data/Mammo-Bench/preproccesed_julian"
+    csv_data_path       = "/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/13-PregradoJulian/Federal Learning/infraestructura federada/INC/manifest/splits"
     result_dir          = "results"
-    path_model          = "models/RadImageNet_pytorch/ResNet50.pt"  # Path to the weights file if needed #"/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/03-Challenges/01-MAMA-MIA/01-Code/RadImageNet_pytorch/01-Pytorch/ResNet50.pt"
+    path_model          = "/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/13-PregradoJulian/Federal Learning/infraestructura federada/FedMammoBench/weights/ResNet50.pt"
 
     # Available options
     images_model_choices    = ["Inception", "ResNet", "DenseNet"]

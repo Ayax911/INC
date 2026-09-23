@@ -1,15 +1,27 @@
-path_image_model_resnet="/src/models/classification_images/models/pretrained_models/ResNet50.pt"
+#!/usr/bin/env bash
+set -euo pipefail
 
-result_dir="/ruta/de/resultados/experimento"
+cd "$(dirname "$0")"
 
-python3 main.py --exp_name "Classification Images" \
-                --images_dir "/ruta/de/imagenes" \
-                --csv_data_path "ruta/de/csv" \
-                --result_dir $result_dir \
+BASE_DIR="/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/13-PregradoJulian/Federal Learning/infraestructura federada"
+FEDMAMMOBENCH_DIR="$BASE_DIR/FedMammoBench"
+INC_DIR="$BASE_DIR/INC"
+
+path_image_model_resnet="$FEDMAMMOBENCH_DIR/weights/ResNet50.pt"
+images_dir="/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/02-Databases/Mammo-Bench/c86fb00c-0fb8-4e0e-85a2-4d415f9c1ada_1a9410d8-9769-4064-a064-0160f2fd193d_DATASET-FILE_Mammo_Bench_zip_20241225112148174/Mammo_Data/Mammo-Bench/preproccesed_julian"
+csv_data_path="$INC_DIR/manifest/splits"
+result_dir="$INC_DIR/results"
+
+PYTHON="${PYTHON:-/home/imagenesmedicas/miniconda3/envs/inc-combined/bin/python3}"
+
+"$PYTHON" main.py --exp_name "Classification Images" \
+                --images_dir "$images_dir" \
+                --csv_data_path "$csv_data_path" \
+                --result_dir "$result_dir" \
                 --tag_exp "Classification Images" \
                 --activation_image_model "Gelu" \
                 --image_model "ResNet" \
-                --path_image_model $path_image_model_resnet \
+                --path_image_model "$path_image_model_resnet" \
                 --num_freeze 80 \
                 --hidden_layers 2048 1024 256 \
                 --output_size 2 \
@@ -22,5 +34,6 @@ python3 main.py --exp_name "Classification Images" \
                 --patience_early 50 \
                 --min_lr 1e-6 \
                 --loss "BCE" \
-                --train
+                --train \
+                "$@"
 
