@@ -266,8 +266,11 @@ data/raw
 
 models/*.pt
 
-.vscode
 data
 *.pth
 
 data/
+wandb/
+**/Saved_Models/
+.~lock.*#
+*.lock

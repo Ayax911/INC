@@ -28,7 +28,7 @@ if __name__ == "__main__":
     options = {
         "strategy"          : "images",
         "image_model"       : "ResNet",
-        "path_image_model"  : "/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/03-Challenges/01-MAMA-MIA/01-Code/RadImageNet_pytorch/01-Pytorch/ResNet50.pt",
+        "path_image_model"  : "/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/13-PregradoJulian/Federal Learning/infraestructura federada/FedMammoBench/weights/ResNet50.pt",
         "freeze_backbone"   : True,
     }
     

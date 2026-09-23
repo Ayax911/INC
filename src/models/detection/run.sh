@@ -1,3 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
 python3 main.py     --path_data data_1024.yaml \
                     --img_size 1024 \
                     --batch_size 18 \
@@ -13,8 +18,4 @@ python3 main.py     --path_data data_1024.yaml \
                     --seed 42 \
                     --learning_rate 0.001 \
                     --model_path yolo11_m_digitaleye.pt \
-                    --dropout 0.0 \
-
-
-
-
+                    --dropout 0.0

@@ -48,16 +48,18 @@ class ImageDataset(Dataset):
         ext         = os.path.splitext(image_path)[1].lower()
 
         if ext in (".tif", ".tiff"):
-            
-            # im_input_ = Image.open(image_path).convert("RGB").resize((self.img_size[1], self.img_size[0]))
+            # Los patches ya vienen pre-resizeados al tamaño correcto en disco (no se
+            # resizea aquí). No se usa .convert("RGB"): sobre un TIFF float de un canal
+            # (modo "F", ej. el preprocesamiento de FedMammoBench que escribe [0,1] o
+            # [-1,1]) PIL trunca y recorta a enteros 0..255 en vez de reescalar, así que
+            # la imagen sale COMPLETAMENTE NEGRA (medido: min=max=0). Se deja el array en
+            # su dtype/valor nativo y se replica a 3 canales más abajo con torch.cat.
             im_input_ = Image.open(image_path)
             im_input_ = np.array(im_input_)
             im_input_ = im_input_[np.newaxis,...]
         else:
             im_input_ = np.load(image_path)
 
-
-        # im_input_   = self.transforms(im_input_)
         im_input_   = torch.from_numpy(im_input_)
         im_input_   = torch.cat([im_input_,im_input_,im_input_], dim=0)
         im_input_   = self.transforms(im_input_)
