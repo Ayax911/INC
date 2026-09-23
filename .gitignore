@@ -269,3 +269,5 @@ models/*.pt
 .vscode
 data
 *.pth
+
+data/

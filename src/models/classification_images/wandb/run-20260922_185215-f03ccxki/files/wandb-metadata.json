@@ -1,0 +1,89 @@
+{
+  "os": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+  "python": "CPython 3.13.15",
+  "startedAt": "2026-09-22T23:52:15.524158Z",
+  "args": [
+    "--exp_name",
+    "exp57_camilo_centralizado_local",
+    "--images_dir",
+    "/home/akira/snap/steam/preproccesed_julian",
+    "--csv_data_path",
+    "/home/akira/Escritorio/inc-project-models-classification-detection-main/manifest/splits",
+    "--result_dir",
+    "/home/akira/Escritorio/inc-project-models-classification-detection-main/results/exp57_camilo_centralizado_local",
+    "--tag_exp",
+    "exp57_camilo_centralizado_local",
+    "--image_model",
+    "ResNet",
+    "--path_image_model",
+    "/home/akira/Escritorio/inc-project-models-classification-detection-main/ResNet50.pt",
+    "--num_freeze",
+    "0",
+    "--hidden_layers",
+    "512",
+    "--output_size",
+    "2",
+    "--activation",
+    "LeakyReLU",
+    "--dropout",
+    "0.2",
+    "--augmentation",
+    "--n_epochs",
+    "200",
+    "--batch_size",
+    "8",
+    "--lr",
+    "1e-4",
+    "--b1",
+    "0.5",
+    "--b2",
+    "0.999",
+    "--patience_early",
+    "100",
+    "--min_lr",
+    "1e-6",
+    "--loss",
+    "BCE",
+    "--class_balance",
+    "--neg_weight",
+    "0.7593",
+    "--pos_weight",
+    "1.4642",
+    "--train"
+  ],
+  "program": "/home/akira/Escritorio/inc-project-models-classification-detection-main/src/models/classification_images/main.py",
+  "codePath": "src/models/classification_images/main.py",
+  "codePathLocal": "main.py",
+  "git": {
+    "remote": "git@github.com:Ayax911/INC.git",
+    "commit": "317eade218a296b5a6e6356c650f7aca178ca9cd"
+  },
+  "email": "j.mast8924@gmail.com",
+  "root": "/home/akira/Escritorio/inc-project-models-classification-detection-main/src/models/classification_images",
+  "host": "akira-Victus-by-HP-Gaming-Laptop-15-fb0xxx",
+  "executable": "/home/akira/Escritorio/inc-project-models-classification-detection-main/.venv/bin/python3",
+  "cpu_count": 6,
+  "cpu_count_logical": 12,
+  "gpu": "NVIDIA GeForce GTX 1650",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "112932057088",
+      "used": "92783009792"
+    }
+  },
+  "memory": {
+    "total": "16058601472"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce GTX 1650",
+      "memoryTotal": "4294967296",
+      "cudaCores": 896,
+      "architecture": "Turing",
+      "uuid": "GPU-2122690c-fc85-c679-a70f-f373c605b0f3"
+    }
+  ],
+  "cudaVersion": "13.2",
+  "writerId": "4iw9yh04f62ht70rg6ohyfo9fytslgnv"
+}

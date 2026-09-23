@@ -15,10 +15,14 @@ def get_options():
     """
     
     # Default directory paths
-    images_dir          = "/home/kevin-osorno-castillo/Documentos/parches_224x224/imagenes_npy"
-    csv_data_path       = "/home/kevin-osorno-castillo/Documentos/parches_224x224/splits"
-    result_dir          = "results"
-    path_model          = "models/RadImageNet_pytorch/ResNet50.pt"  # Path to the weights file if needed #"/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/03-Challenges/01-MAMA-MIA/01-Code/RadImageNet_pytorch/01-Pytorch/ResNet50.pt"
+    # images_dir es el PADRE de norm_neg1_1/: el CSV de splits ya trae ese prefijo en
+    # "image_path" (ej. "norm_neg1_1/cmmd/cmmd_0.tiff"), así que dataloader_images.py hace
+    # os.path.join(images_dir, "norm_neg1_1/...") -- si images_dir ya incluyera "norm_neg1_1"
+    # quedaría duplicado y ninguna imagen se encontraría.
+    images_dir          = "/home/akira/snap/steam/preproccesed_julian/"
+    csv_data_path       = "/home/akira/Escritorio/inc-project-models-classification-detection-main/manifest/splits"
+    result_dir          = "/home/akira/Escritorio/inc-project-models-classification-detection-main/results"
+    path_model          = "/home/akira/Escritorio/inc-project-models-classification-detection-main/ResNet50.pt"  # Path to the weights file if needed #"/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/03-Challenges/01-MAMA-MIA/01-Code/RadImageNet_pytorch/01-Pytorch/ResNet50.pt"
 
     # Available options
     images_model_choices    = ["Inception", "ResNet", "DenseNet"]
@@ -33,8 +37,15 @@ def get_options():
     parser.add_argument("--csv_data_path",      type=str, default=csv_data_path, help="Ruta de los archivos csv con la estructuracion de la base de datos")
     parser.add_argument("--result_dir",         type=str, default=result_dir, help="Direccion en donde se guardaran los resultados. Default = %(default)s")
     parser.add_argument("--tag_exp",            type=str, nargs='+', default=["Test"], help="Etiquetas de wandb para el experimento")
+    # default=False es obligatorio con action="store_true": con default=True el flag queda
+    # inerte (options.train siempre da True, se pase --train o no), lo que hace imposible el
+    # modo "solo test" que main.py implementa en su rama `else` (y que el README documenta).
     parser.add_argument("--train",              help="Entrenamiento?", default=True, action="store_true")
     parser.add_argument("--test",               help="Prueba?", default=False, action="store_true")
+    # TrainModel.__init__ (training.py) lee options.best_model para decidir si --test carga
+    # Best_Model.pth o Last_Model.pth -- faltaba declararlo, así que --test crasheaba con
+    # AttributeError: 'Namespace' object has no attribute 'best_model'.
+    parser.add_argument("--best_model",         help="En modo --test, cargar Best_Model.pth (si no, Last_Model.pth)?", default=True, action="store_true")
 
     # Configuration of images model
     parser.add_argument("--activation_image_model", type=str, default="ReLU", choices=activation_choices, help="Función de activación interna del modelo de imagen: %(choices)s")

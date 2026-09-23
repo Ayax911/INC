@@ -1,26 +1,27 @@
-path_image_model_resnet="/src/models/classification_images/models/pretrained_models/ResNet50.pt"
-
-result_dir="/ruta/de/resultados/experimento"
-
-python3 main.py --exp_name "Classification Images" \
-                --images_dir "/ruta/de/imagenes" \
-                --csv_data_path "ruta/de/csv" \
-                --result_dir $result_dir \
-                --tag_exp "Classification Images" \
-                --activation_image_model "Gelu" \
-                --image_model "ResNet" \
-                --path_image_model $path_image_model_resnet \
-                --num_freeze 80 \
-                --hidden_layers 2048 1024 256 \
-                --output_size 2 \
-                --activation "Gelu" \
-                --dropout 0.5 \
-                --augmentation \
-                --n_epochs 200 \
-                --batch_size 64 \
-                --lr 5e-4 \
-                --patience_early 50 \
-                --min_lr 1e-6 \
-                --loss "BCE" \
-                --train
+python3 main.py \
+    --exp_name "exp57_camilo_centralizado_local" \
+    --images_dir "/home/akira/snap/steam/preproccesed_julian" \
+    --csv_data_path "/home/akira/Escritorio/inc-project-models-classification-detection-main/manifest/splits" \
+    --result_dir "/home/akira/Escritorio/inc-project-models-classification-detection-main/results/exp57_camilo_centralizado_local" \
+    --tag_exp "exp57_camilo_centralizado_local" \
+    --image_model "ResNet" \
+    --path_image_model "/home/akira/Escritorio/inc-project-models-classification-detection-main/ResNet50.pt" \
+    --num_freeze 0 \
+    --hidden_layers 512 \
+    --output_size 2 \
+    --activation "LeakyReLU" \
+    --dropout 0.2 \
+    --augmentation \
+    --n_epochs 200 \
+    --batch_size 8 \
+    --lr 1e-4 \
+    --b1 0.5 \
+    --b2 0.999 \
+    --patience_early 100 \
+    --min_lr 1e-6 \
+    --loss "BCE" \
+    --class_balance \
+    --neg_weight 0.7593 \
+    --pos_weight 1.4642 \
+    --train
 

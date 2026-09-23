@@ -25,6 +25,12 @@ from metrics import Metrics
 import pandas as pd
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 import seaborn as sns
+import matplotlib
+# Backend no interactivo: todos los plt.* de este módulo solo hacen
+# savefig(), nunca show(). Sin esto, matplotlib autodetecta "qtagg" porque
+# PySide6 está instalado (dependencia de la GUI, sin relación con esto) y
+# crashea con SIGSEGV al faltar libxcb-cursor0 en el sistema.
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from models.get_model import get_model
 from early_stopping import EarlyStopping
@@ -105,7 +111,7 @@ class TrainModel():
 	  							eta_min = options.min_lr
 						 	)
   
-		show_batch_images(self.train_loader, save_dir=os.path.join(self.options.result_dir, self.options.exp_name))
+		#show_batch_images(self.train_loader, save_dir=os.path.join(self.options.result_dir, self.options.exp_name))
   
 		if(options.test and options.best_model):
 			self.model.load_state_dict(torch.load(os.path.join(self.options.result_dir, self.options.exp_name, "Saved_Models", "Best_Model.pth")))
@@ -131,8 +137,31 @@ class TrainModel():
 
 			for batch_idx, data in enumerate(self.train_loader):
 
+
+
 				# Get data
-				inputs, targets,   	= data
+				inputs, targets, = data
+
+				# image = inputs.detach().cpu()
+				# labels = targets.detach().cpu()
+
+				# img = image.numpy()
+
+				# for i in range(img.shape[0]):
+				# 	image_i = img[0,0,...]
+				# 	plt.imshow(image_i, cmap="gray", vmin=-1, vmax=1)
+				# 	plt.xlabel(f"Min: {image_i.min()}, Max: {image_i.max()}\nLabel:labels[0].item(), batch:{i}")
+				# 	plt.axis("off")
+
+				# 	save_path = os.path.abspath(f"debug_batch_{batch_idx}.png")
+				# 	plt.savefig(save_path)
+				# 	plt.close()
+				# 	print(f"[batch {batch_idx}] Guardado en: {save_path}")
+
+				# Convertir los inputs en un array
+				# Graficar la imagen.
+				# Valor minimo y el valor maximo de intensidad
+				# Verificar (imprimir) la etiqueta
 				inputs, targets     = inputs.to(self.device), targets.to(self.device)
 				inputs, targets		= inputs.float(), targets.long()
 

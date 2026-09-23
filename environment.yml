@@ -54,6 +54,7 @@ dependencies:
   # Misc
   - pyyaml
   - requests
+  - natsort
 
   - pip:
       # General
