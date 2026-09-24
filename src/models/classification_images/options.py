@@ -25,7 +25,7 @@ def get_options():
     path_model          = "/home/akira/Escritorio/inc-project-models-classification-detection-main/ResNet50.pt"  # Path to the weights file if needed #"/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/03-Challenges/01-MAMA-MIA/01-Code/RadImageNet_pytorch/01-Pytorch/ResNet50.pt"
 
     # Available options
-    images_model_choices    = ["Inception", "ResNet", "DenseNet"]
+    images_model_choices    = ["Inception", "ResNet", "ResNet18", "DenseNet"]
     activation_choices      = ["Linear", "ReLU", "Sigmoid", "LeakyReLU", "Tanh", "Gelu"]
 
     # Create argument parser with description
@@ -54,6 +54,7 @@ def get_options():
     parser.add_argument("--image_model",            type=str, default="ResNet", choices=images_model_choices, help="Seleccione el modelo generador a utilizar: %(choices)s")
     parser.add_argument("--path_image_model",       type=str, default=path_model, help="Ruta al archivo de pesos del modelo preentrenado")
     parser.add_argument("--pretrained",             help="Inicializar el backbone de imagen con los pesos ImageNet de torchvision? (ignora --path_image_model si se activa)", default=False, action="store_true")
+    parser.add_argument("--from_scratch",           help="Inicializar el backbone de imagen con pesos aleatorios (sin preentrenamiento)? Ignora --path_image_model. Incompatible con --pretrained", default=False, action="store_true")
     parser.add_argument("--num_freeze",             type = int, default=5, help="Congelar la base del modelo?", )
     
     # Configuration of final model
@@ -66,6 +67,8 @@ def get_options():
     parser.add_argument("--channels",       type=int, default=3, help="Número de canales de la imagen")
     parser.add_argument("--augmentation",   help="Utilizar aumento de datos en el entrenamiento?", default=False, action="store_true")
     parser.add_argument('--img_size',       type=parse_tuple, help='Dimension de las imagenes de entrada en formato (height, width)', default=(224, 224))
+    parser.add_argument("--normalize_mean", type=float, default=None, help="Media para T.Normalize (1 valor, se difunde a los 3 canales replicados). None = sin Normalize. Default = %(default)s")
+    parser.add_argument("--normalize_std",  type=float, default=None, help="Desviación estándar para T.Normalize (1 valor). None = sin Normalize. Default = %(default)s")
 
     # Add arguments for training parameters
     parser.add_argument("--init_epoch",     type=int, default=0, help="Epoca desde donde se inicia el entrenamiento")

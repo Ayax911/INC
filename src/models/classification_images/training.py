@@ -92,7 +92,7 @@ class TrainModel():
 			self.criterion.to(self.device)
 		
 		# Get loaders
-		loader 				= Loader(options.images_dir, options.csv_data_path, options.augmentation, options.img_size)
+		loader 				= Loader(options.images_dir, options.csv_data_path, options.augmentation, options.img_size, normalize_mean=options.normalize_mean, normalize_std=options.normalize_std)
 		self.loader 		= loader  # evaluate_by_database() lee las rutas de loader.{val,test}_dataset.data
 		self.train_loader 	= loader.train_dataloader(batch_size=options.batch_size)
 		self.val_loader 	= loader.val_dataloader(batch_size=options.batch_size)

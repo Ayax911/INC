@@ -1,4 +1,5 @@
 from torchvision.models import (
+    resnet18, ResNet18_Weights,
     resnet50, ResNet50_Weights,
     densenet121, DenseNet121_Weights,
     inception_v3, Inception_V3_Weights,
@@ -28,12 +29,14 @@ def get_image_model(
 
     if(model_name == "ResNet"):
         base_model      = ResNetModel(pretrained=pretrained)
+    elif(model_name == "ResNet18"):
+        base_model      = ResNet18Model(pretrained=pretrained)
     elif(model_name == "DenseNet"):
         base_model      = DenseNetModel(pretrained=pretrained)
     elif(model_name == "Inception"):
         base_model      = InceptionModel(pretrained=pretrained)
     else:
-        raise ValueError(f"Model {model_name} not supported. Please choose from 'ResNet', 'DenseNet', or 'Inception'.")
+        raise ValueError(f"Model {model_name} not supported. Please choose from 'ResNet', 'ResNet18', 'DenseNet', or 'Inception'.")
     
     # Si los pesos son proporcionados, cargarlos en el modelo base
     if weigths_file is not None:
@@ -97,6 +100,28 @@ class ResNetModel(nn.Module):
         self.backbone   = nn.Sequential(*encoder_layers[:9])
 
     
+    def forward(self, x):
+        out = self.backbone(x)
+        out = torch.flatten(out, 1)
+        return out
+
+class ResNet18Model(nn.Module):
+    """
+    Model class for ResNet18 architecture.
+    This class initializes the ResNet18 model without the final fully connected layer.
+    It uses the torchvision implementation of ResNet18 (512 features tras el global pooling).
+    The model is designed to be used as a backbone for further classification tasks.
+    """
+
+    def __init__(self, pretrained: bool = False):
+        super(ResNet18Model, self).__init__()
+
+        weights         = ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
+        base_model      = resnet18(weights=weights)
+        self.features   = base_model.fc.in_features
+        encoder_layers  = list(base_model.children())
+        self.backbone   = nn.Sequential(*encoder_layers[:9])
+
     def forward(self, x):
         out = self.backbone(x)
         out = torch.flatten(out, 1)

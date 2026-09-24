@@ -6,9 +6,12 @@ from models.mlp_models import MLP
 
 def get_model(options:dict):
 
-    # Si se pide --pretrained, se usan los pesos ImageNet de torchvision y se ignora
-    # el checkpoint de --path_image_model (evita que uno sobreescriba al otro).
-    weigths_file = None if options.pretrained else options.path_image_model
+    if options.pretrained and options.from_scratch:
+        raise ValueError("--pretrained y --from_scratch son excluyentes.")
+
+    # --pretrained usa los pesos ImageNet de torchvision y --from_scratch deja el backbone con
+    # pesos aleatorios: en ambos casos se ignora el checkpoint de --path_image_model.
+    weigths_file = None if (options.pretrained or options.from_scratch) else options.path_image_model
 
     image_model = get_image_model(
         model_name      = options.image_model,

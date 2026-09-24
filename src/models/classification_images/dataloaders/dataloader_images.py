@@ -90,7 +90,7 @@ class Loader:
         augmentation (bool, optional): Apply random augmentations to images. Defaults to False.
     """
 
-    def __init__(self, images_dir: str, data_dir: str,  augmentation: bool = False, img_size: tuple = (224, 224)):
+    def __init__(self, images_dir: str, data_dir: str, augmentation: bool = False, img_size: tuple = (224, 224), normalize_mean: float = None, normalize_std: float = None):
 
         self.images_dir = images_dir
 
@@ -101,17 +101,19 @@ class Loader:
         self.val_data   = os.path.join(data_dir, "val_clinical_data.csv")
         self.img_size   = img_size
         
+        # Se aplica sobre el tensor ya replicado a 3 canales; el valor único se difunde a los 3.
+        normalize = [T.Normalize(mean=[normalize_mean], std=[normalize_std])] if normalize_mean is not None and normalize_std is not None else []
+
         self.transforms_train = T.Compose([
             T.RandomHorizontalFlip(p=0.5),
             T.RandomRotation(degrees=15),               # rotaciones leves
             T.RandomVerticalFlip(p=0.2),                # flip vertical (suave)
+            *normalize,
         ])
 
-        # self.transforms_test = T.Compose([
-                #     T.ToTensor(),
-                # ])
-
-        self.transforms_test = T.Compose([])
+        self.transforms_test = T.Compose([
+            *normalize,
+        ])
 
         # Create train and test datasets
         self.train_dataset = ImageDataset(
