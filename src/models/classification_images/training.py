@@ -242,8 +242,8 @@ class TrainModel():
 
 			self.epoch_stats["epoch"] = self.epoch
 			self.epoch_stats["lr"] = self.optimizer.param_groups[0]['lr']
-			wandb.log(self.epoch_stats)
 			self.validation(plot=False)
+			wandb.log(self.epoch_stats)
 			self.epoch_logger.log(self.epoch, self.epoch_stats)
 			self.scheduler.step()
 

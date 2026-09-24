@@ -32,8 +32,11 @@ from typing import Any
 
 import numpy as np
 import torch
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except (ImportError, ModuleNotFoundError):
+    SummaryWriter = None
 from sklearn.metrics import balanced_accuracy_score, cohen_kappa_score, matthews_corrcoef
-from torch.utils.tensorboard import SummaryWriter
 from torchmetrics import Metric
 from torchmetrics.classification import BinaryAUROC
 
@@ -67,13 +70,14 @@ class EpochLogger:
         self._csv_writer.writerow(row)
         self._csv_file.flush()
 
-        if self._tb_writer is None:
+        if self._tb_writer is None and SummaryWriter is not None:
             self._tb_writer = SummaryWriter(log_dir=str(self.run_dir))
-        for name, value in metrics.items():
-            try:
-                self._tb_writer.add_scalar(name, value, epoch)
-            except (TypeError, ValueError):
-                pass  # valores no escalares (si los hubiera) se ignoran en TensorBoard
+        if self._tb_writer is not None:
+            for name, value in metrics.items():
+                try:
+                    self._tb_writer.add_scalar(name, value, epoch)
+                except (TypeError, ValueError):
+                    pass  # valores no escalares (si los hubiera) se ignoran en TensorBoard
 
     def close(self) -> None:
         if self._csv_file is not None:

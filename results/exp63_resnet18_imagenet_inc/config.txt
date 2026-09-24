@@ -1,0 +1,44 @@
+activation: LeakyReLU
+activation_image_model: ReLU
+augmentation: True
+b1: 0.5
+b2: 0.999
+batch_size: 64
+best_model: True
+channels: 3
+class_balance: True
+csv_data_path: /media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/13-PregradoJulian/Federal Learning/infraestructura federada/inc_repro_data/csvs_norm_0_1
+dropout: 0.2
+exp_name: exp63_resnet18_imagenet_inc
+from_scratch: False
+gamma: 2.0
+hidden_layers: [1024]
+image_model: ResNet18
+images_dir: /media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/02-Databases/Mammo-Bench/c86fb00c-0fb8-4e0e-85a2-4d415f9c1ada_1a9410d8-9769-4064-a064-0160f2fd193d_DATASET-FILE_Mammo_Bench_zip_20241225112148174/Mammo_Data/Mammo-Bench/preproccesed_julian
+img_size: (224, 224)
+init_epoch: 0
+loss: BCE
+lr: 0.001
+min_lr: 1e-06
+n_epochs: 200
+neg_weight: 0.7593
+normalize_mean: 0.449
+normalize_std: 0.226
+num_freeze: 60
+output_size: 2
+path_image_model: /home/akira/Escritorio/inc-project-models-classification-detection-main/ResNet50.pt
+patience_early: 100
+pos_weight: 1.4642
+pretrained: True
+result_dir: /media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/13-PregradoJulian/Federal Learning/infraestructura federada/inc_repro_data/results
+tag_exp: ['inc', 'resnet_scratch_vs_resnet18']
+test: False
+train: True
+wandb_group: resnet_scratch_vs_resnet18
+wandb_project: fedmammobench2.0
+
+--------------- Time Training ------------------
+Tiempo de entrenamiento: 0 horas y 29 minutos
+
+--------------- Time Training ------------------
+Tiempo de entrenamiento: 0 horas y 29 minutos

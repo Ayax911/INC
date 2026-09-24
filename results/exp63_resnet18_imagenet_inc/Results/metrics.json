@@ -1,0 +1,8 @@
+{
+  "Test_Accuracy": 0.7042410714285714,
+  "Test_BCE-Loss": 0.5867548137903214,
+  "Test_F1-Score": 0.5516166474137988,
+  "Test_Sensitivity": 0.693153726203101,
+  "Test_Specificity": 0.509230945791517,
+  "Test_VPP": 0.47247446365508833
+}
