@@ -20,7 +20,7 @@ def get_model(options:dict):
         pretrained      = options.pretrained,
     )
     
-    classifier  = MLP(input_size=image_model.features, hidden_layers=options.hidden_layers, output_size=options.output_size, activation=options.activation, dropout=options.dropout)
+    classifier  = MLP(input_size=image_model.features, hidden_layers=options.hidden_layers, output_size=options.output_size, activation=options.activation, dropout=options.dropout, input_dropout=options.input_dropout)
     final_model = nn.Sequential(image_model, classifier)
 
     return final_model

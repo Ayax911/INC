@@ -3,30 +3,38 @@ import torch.nn as nn
 
 class MLP(nn.Module):
     def __init__(
-            self, 
-            input_size:int      = 20, 
+            self,
+            input_size:int      = 20,
             hidden_layers: list = [64, 32],
-            output_size: int    = 2, 
-            activation:str      = "ReLU", 
-            dropout: float      = 0.5
+            output_size: int    = 2,
+            activation:str      = "ReLU",
+            dropout: float      = 0.5,
+            input_dropout: float = 0.0
         ):
         super(MLP, self).__init__()
-        
+
         """
         This is a simple Multi-layer perceptron (MLP) model.
-        
+
         Args:
             input_size (int): The size of the input layer.
             hidden_layers (list): A list of integers representing the sizes of the hidden layers.
             output_size (int): The size of the output layer.
             activation (str): The activation function to use in the hidden layers.
             dropout (float): The dropout rate to use in the hidden layers.
-            
+            input_dropout (float): Dropout applied right after the input, before any hidden
+                layer. 0.0 (default) omits it -- unlike `dropout`, which is only applied
+                inside the hidden-layer loop and therefore has no effect when
+                `hidden_layers` is empty. Port of FedMammoBench's
+                ConfigurableMLPHead.input_dropout (src/models/mlp_configs/configurable_mlp.py).
+
         Returns:
             nn.Module: The MLP model.
         """
-        
+
         layers      = []
+        if input_dropout > 0:
+            layers.append(nn.Dropout(input_dropout))
         prev_size   = input_size
 
         for h in hidden_layers:

@@ -35,9 +35,19 @@ def get_image_model(
         base_model      = DenseNetModel(pretrained=pretrained)
     elif(model_name == "Inception"):
         base_model      = InceptionModel(pretrained=pretrained)
+    elif(model_name == "CustomCNN"):
+        base_model      = CustomCNNModel(pretrained=pretrained)
     else:
-        raise ValueError(f"Model {model_name} not supported. Please choose from 'ResNet', 'ResNet18', 'DenseNet', or 'Inception'.")
-    
+        raise ValueError(f"Model {model_name} not supported. Please choose from 'ResNet', 'ResNet18', 'DenseNet', 'Inception', or 'CustomCNN'.")
+
+    # CustomCNN no tiene pesos preentrenados que cargar -- a diferencia de las demás
+    # arquitecturas, weigths_file nunca debería llegar no-None acá: si el caller no pasó
+    # --pretrained ni --from_scratch, get_model.py le pasaría el checkpoint default
+    # (ResNet50.pt), que no calza con esta arquitectura y fallaría con un error de shape
+    # confuso dentro de load_state_dict(). Se corta antes, con un mensaje claro.
+    if model_name == "CustomCNN" and weigths_file is not None:
+        raise ValueError("CustomCNN no admite --path_image_model (no tiene pesos preentrenados): usa --from_scratch.")
+
     # Si los pesos son proporcionados, cargarlos en el modelo base
     if weigths_file is not None:
         if not isinstance(weigths_file, str):
@@ -146,6 +156,46 @@ class DenseNetModel(nn.Module):
     def forward(self, x):
         out = self.backbone(x)
         out = self.global_pool(out)
+        out = torch.flatten(out, 1)
+        return out
+
+
+class CustomCNNModel(nn.Module):
+    """
+    Backbone CNN custom (diseño propio, sin pesos preentrenados): 4 bloques de
+    Conv2d(3x3, padding="same") -> BatchNorm2d -> ReLU repetido 2 veces, con
+    MaxPool2d(2) al final de los bloques 1-3 (canales 32/64/128/256; el bloque
+    4 no reduce resolución) + AdaptiveAvgPool2d(1) (GlobalAveragePooling2D).
+    Entrega 256 features tras el pooling global. Réplica en este repo de
+    FedMammoBench/src/models/custom_cnn.py::CustomCNNBackbone (mismo diseño,
+    código paralelo -- cada repo es autocontenido, no hay import cruzado).
+    """
+
+    def __init__(self, pretrained: bool = False):
+        super(CustomCNNModel, self).__init__()
+
+        if pretrained:
+            raise ValueError("CustomCNN no tiene pesos preentrenados: --pretrained no aplica.")
+
+        def conv_bn_relu(in_channels, out_channels):
+            return nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=3, padding="same"),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(inplace=True),
+            )
+
+        block1 = nn.Sequential(conv_bn_relu(3, 32), conv_bn_relu(32, 32), nn.MaxPool2d(2))
+        block2 = nn.Sequential(conv_bn_relu(32, 64), conv_bn_relu(64, 64), nn.MaxPool2d(2))
+        block3 = nn.Sequential(conv_bn_relu(64, 128), conv_bn_relu(128, 128), nn.MaxPool2d(2))
+        # Bloque 4 sin MaxPool2d -- por diseño, termina en 32x32x256 (para input 256x256).
+        block4 = nn.Sequential(conv_bn_relu(128, 256), conv_bn_relu(256, 256))
+        gap     = nn.AdaptiveAvgPool2d(1)
+
+        self.features   = 256
+        self.backbone   = nn.Sequential(block1, block2, block3, block4, gap)
+
+    def forward(self, x):
+        out = self.backbone(x)
         out = torch.flatten(out, 1)
         return out
 

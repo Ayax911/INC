@@ -1,7 +1,19 @@
 # CLASSIFICATION_IMAGES.md — `src/models/classification_images/`
 
-Image-only CNN+MLP: `ResNetModel` (ResNet50 minus final FC, DenseNet121/InceptionV3 also supported by
-`models/get_model.py`) → `MLP` head, wired as `nn.Sequential(image_model, classifier)`.
+Image-only CNN+MLP: `ResNetModel` (ResNet50 minus final FC, ResNet18/DenseNet121/InceptionV3/
+`CustomCNNModel` also supported by `models/get_model.py`) → `MLP` head, wired as
+`nn.Sequential(image_model, classifier)`.
+
+`CustomCNNModel` (`models/image_models.py`) is a from-scratch CNN backbone — 4 blocks of
+`Conv2d(3x3, padding="same") -> BatchNorm2d -> ReLU` x2 (channels 32/64/128/256), `MaxPool2d(2)`
+after blocks 1-3 (block 4 does not downsample), `AdaptiveAvgPool2d(1)` → 256 features. It has no
+pretrained weights: `--image_model CustomCNN` requires `--from_scratch` (or any other flag that
+makes `get_model.py` pass `weigths_file=None`) — passing `--path_image_model` with it raises a
+`ValueError` instead of a confusing `load_state_dict` shape mismatch against the default
+`ResNet50.pt`, and `--pretrained` also raises. It's a parallel, non-shared reimplementation of
+`FedMammoBench/src/models/custom_cnn.py::CustomCNNBackbone` (same design, same parameter count —
+verified: 1,174,176 trainable params in both repos), paired for cross-repo comparison the same way
+`ResNet18Model` is paired with FMB's `resnet18_scratch`.
 
 ## Running it
 
@@ -29,6 +41,15 @@ python3 main.py --train --images_dir <dir> --csv_data_path <dir> --path_image_mo
 
 `--path_image_model` loads a pretrained backbone via `image_models.py`:
 `base_model.load_state_dict(torch.load(weights_file, map_location=device))`.
+
+## Final classifier head
+
+`models/mlp_models.py::MLP` also has `--input_dropout` (default `0.0`, port of FedMammoBench's
+`ConfigurableMLPHead.input_dropout`): a `Dropout` applied right after the input, before any hidden
+layer. Exists because plain `--dropout` is only inserted *inside* the hidden-layer loop, so with
+`--hidden_layers` empty (a single `Linear(features, output_size)`, no hidden layer) there was no way
+to request dropout at all — needed for `CustomCNN`'s "GAP → Dropout(0.4) → Dense(1)" design. Default
+preserves every existing config's behavior unchanged.
 
 ## Augmentation
 

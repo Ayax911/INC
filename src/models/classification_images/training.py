@@ -82,24 +82,39 @@ class TrainModel():
 				name = options.loss,
 				positive_weight = options.pos_weight,
 				negative_weight = options.neg_weight,
-				gamma 			= options.gamma
+				gamma 			= options.gamma,
+				label_smoothing = options.label_smoothing
 			)
-   
+
 			self.criterion.to(self.device)
-			
+
 		else:
-			self.criterion = nn.CrossEntropyLoss()
+			self.criterion = nn.CrossEntropyLoss(label_smoothing = options.label_smoothing)
 			self.criterion.to(self.device)
 		
 		# Get loaders
-		loader 				= Loader(options.images_dir, options.csv_data_path, options.augmentation, options.img_size, normalize_mean=options.normalize_mean, normalize_std=options.normalize_std)
+		loader 				= Loader(options.images_dir, options.csv_data_path, options.augmentation, options.img_size, normalize_mean=options.normalize_mean, normalize_std=options.normalize_std, dataloader_seed=options.dataloader_seed)
 		self.loader 		= loader  # evaluate_by_database() lee las rutas de loader.{val,test}_dataset.data
 		self.train_loader 	= loader.train_dataloader(batch_size=options.batch_size)
 		self.val_loader 	= loader.val_dataloader(batch_size=options.batch_size)
 		self.test_loader 	= loader.test_dataloader(batch_size=options.batch_size)
 
 		# Define optimizer and lr scheduler
-		self.optimizer 	= torch.optim.Adam(self.model.parameters(), lr=options.lr, betas=(options.b1, options.b2))
+		# AdamW en vez de Adam (con weight_decay=0.0 son matemáticamente idénticos -- no cambia
+		# el comportamiento de corridas existentes que no pasan --weight_decay). Si se da
+		# --backbone_lr, self.model[0] (backbone, ver models/get_model.py: nn.Sequential(image_model,
+		# classifier)) recibe su propio LR, más bajo que el de la cabeza (model[1]) -- réplica del
+		# param_groups discriminativo de FedMammoBench/src/cli.py, usado por la serie
+		# hpsearch_v1/antioverfit para no destrozar un backbone preentrenado con el LR alto de una
+		# cabeza recién inicializada. None (default) preserva el único param group de antes.
+		if options.backbone_lr is not None:
+			param_groups = [
+				{"params": self.model[0].parameters(), "lr": options.backbone_lr},
+				{"params": self.model[1].parameters(), "lr": options.lr},
+			]
+			self.optimizer = torch.optim.AdamW(param_groups, betas=(options.b1, options.b2), weight_decay=options.weight_decay)
+		else:
+			self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=options.lr, betas=(options.b1, options.b2), weight_decay=options.weight_decay)
 		self.metrics  	= Metrics(self.device)
 		self.best_loss  = 0.
 
@@ -245,6 +260,10 @@ class TrainModel():
 			self.validation(plot=False)
 			wandb.log(self.epoch_stats)
 			self.epoch_logger.log(self.epoch, self.epoch_stats)
+			# dict(...) copia el snapshot -- self.epoch_stats se sigue mutando cada
+			# época, un append sin copiar dejaría self.history lleno de referencias al
+			# mismo dict con el valor de la ÚLTIMA época repetido en todas las filas.
+			self.history.append(dict(self.epoch_stats))
 			self.scheduler.step()
 
 			if self.early_stopping.early_stop:
@@ -292,6 +311,20 @@ class TrainModel():
 
 		self.epoch_logger.close()
 
+		# plots/loss_curve.png -- reporting.plot_loss_curve() ya existía (mismo formato que
+		# FedMammoBench, ver su docstring de módulo) pero nunca se llamaba desde acá: sin
+		# esto, self.history quedaba poblado y sin usar, y ninguna corrida nueva generaba
+		# esta curva (la de inc_mnist_smoketest existente se hizo a mano, aparte, en algún
+		# momento -- no la produjo este método).
+		loss_curve_path = os.path.join(self.options.result_dir, self.options.exp_name, "plots", "loss_curve.png")
+		reporting.plot_loss_curve(
+			[epoch_stats["Loss-BCE"] for epoch_stats in self.history],
+			[epoch_stats["Val_BCE-Loss"] for epoch_stats in self.history],
+			loss_curve_path,
+			best_epoch=self.early_stopping.best_epoch,
+		)
+		print(f"✅ Curva de pérdida guardada en {loss_curve_path}")
+
 	def validation(self, plot=False):
 
 		metrics_img = {
@@ -328,14 +361,20 @@ class TrainModel():
 				preds  	= torch.argmax(probs, dim=1)
 
 				# val_loss con el MISMO criterio (ponderado) que train_loss, como FedMammoBench.
-				# El "Val_BCE-Loss" de Metrics.get_metrics es otra cosa: CrossEntropy sin pesos
-				# aplicada sobre probabilidades ya softmaxeadas.
+				# El "Val_BCE-Loss" de Metrics.get_metrics ya NO es "otra cosa": antes recibía
+				# `probs` (softmax ya aplicado) y Metrics.bce_loss volvía a aplicar softmax
+				# internamente, lo que fijaba el valor en log(1 + 1/e) ~= 0.313 sin importar
+				# qué tan bueno fuera el modelo (bug corregido en metrics.py -- ver su
+				# docstring). Ahora recibe logits, así que mide lo mismo que val_loss salvo
+				# por los pesos de clase: Metrics.bce_loss es un CrossEntropyLoss sin pesos,
+				# mientras que self.criterion sí los aplica -- coinciden solo cuando
+				# pos_weight == neg_weight == 1.0 (p. ej. el smoketest de MNIST).
 				val_collection.update(probs[:, 1], targets.long())
 				val_loss_total += self.criterion(logits, targets.long()).item()
 				n_val_batches  += 1
 
 				# Calculate the metrics
-				metrics = self.metrics.get_metrics(preds, targets.long(), probs, "Val")
+				metrics = self.metrics.get_metrics(preds, targets.long(), logits, "Val")
 				
 				for key, value in metrics.items():
 					metrics_img[key].append(value)
@@ -521,8 +560,12 @@ class TrainModel():
 				all_targets.append(targets.view(-1).cpu().numpy())
 				all_probs.append(probs.cpu().numpy())
 
-				# Calculate the metrics
-				metrics = self.metrics.get_metrics(preds, targets.long(), probs, stage)
+				# Calculate the metrics. `logits`, no `probs` -- ver el docstring de
+				# Metrics.get_metrics: bce_loss aplica softmax internamente, y pasarle
+				# probabilidades ya softmaxeadas fijaba el "{stage}_BCE-Loss" reportado
+				# (Results/metrics.json, wandb) en ~0.313 sin importar la calidad real del
+				# modelo (bug corregido).
+				metrics = self.metrics.get_metrics(preds, targets.long(), logits, stage)
 
 				for key, value in metrics.items():
 					try:

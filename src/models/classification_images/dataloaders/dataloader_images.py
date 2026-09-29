@@ -90,9 +90,15 @@ class Loader:
         augmentation (bool, optional): Apply random augmentations to images. Defaults to False.
     """
 
-    def __init__(self, images_dir: str, data_dir: str, augmentation: bool = False, img_size: tuple = (224, 224), normalize_mean: float = None, normalize_std: float = None):
+    def __init__(self, images_dir: str, data_dir: str, augmentation: bool = False, img_size: tuple = (224, 224), normalize_mean: float = None, normalize_std: float = None, dataloader_seed: int = None):
 
         self.images_dir = images_dir
+        # None (default) preserva el comportamiento de siempre: shuffle=True sin generator,
+        # el orden de batches depende del RNG global (compartido con la inicialización del
+        # modelo y con nn.Dropout). Un valor fijo desacopla el shuffle en un torch.Generator
+        # propio, igual que FedMammoBench/src/seed.py:make_generator -- solo para la
+        # comparación de paridad puntual, no cambia nada si no se pasa explícitamente.
+        self.dataloader_seed = dataloader_seed
 
         # Define input and output paths
         self.images_dir = images_dir
@@ -147,7 +153,8 @@ class Loader:
         Returns:
             DataLoader: Training DataLoader
         """
-        return DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+        generator = torch.Generator().manual_seed(self.dataloader_seed) if self.dataloader_seed is not None else None
+        return DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, generator=generator)
 
     def test_dataloader(self, batch_size):
         """

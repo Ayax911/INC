@@ -14,11 +14,13 @@ def main():
 	Main function to train or test the model based on the given options.
 	"""
 
-	# Set the random seed for reproducibility
-	set_random_seed(42)
-
 	# Get the options from the command line arguments
 	options = get_options()
+
+	# Set the random seed for reproducibility. Antes esto corría ANTES de get_options() con 42
+	# hardcodeado -- no había forma de variar la semilla desde la CLI (ver --seed en options.py).
+	# El orden importa: options.seed tiene que existir antes de poder leerlo.
+	set_random_seed(options.seed)
 
 	# Print the options and save the code
 	print_options(options)

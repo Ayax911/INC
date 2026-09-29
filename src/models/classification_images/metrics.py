@@ -15,7 +15,7 @@ class Metrics():
         self.bce_loss       = torch.nn.CrossEntropyLoss().to(device)
         
 
-    def get_metrics(self, prediction: torch.tensor, target: torch.tensor, probs: torch.tensor, stage: str)->dict:
+    def get_metrics(self, prediction: torch.tensor, target: torch.tensor, logits: torch.tensor, stage: str)->dict:
 
         """
         Calculate metrics for a given set of predictions and targets.
@@ -23,18 +23,23 @@ class Metrics():
         Args:
             prediction (torch.tensor): Predictions tensor.
             target (torch.tensor): Target tensor.
-            probs (torch.tensor): Probability tensor.
+            logits (torch.tensor): Raw model output (pre-softmax). `nn.CrossEntropyLoss`
+                applies `log_softmax` internally, so it must receive logits, not
+                probabilities -- passing an already-softmaxed tensor here double-softmaxes
+                and floors the reported loss at log(1 + 1/e) ~= 0.313 regardless of model
+                quality (fixed in this commit; previously named `probs` and fed
+                `torch.softmax(logits, dim=1)`).
 
         Returns:
             dict: Dictionary of metrics.
         """
-        
+
         # Calcular las metricas de clasificacion
         accuracy_       = self.accuracy(prediction, target)
         sensitivity_    = self.sensitivity(prediction, target)
         specificity_    = self.specificity(prediction, target)
         f1_score_       = self.f1_score(prediction, target)
-        bce_error_      = self.bce_loss(probs, target)
+        bce_error_      = self.bce_loss(logits, target)
         vpp_            = self.vpp(prediction, target)
 
         dict_metrics = {

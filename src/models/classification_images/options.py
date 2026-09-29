@@ -25,7 +25,7 @@ def get_options():
     path_model          = "/home/akira/Escritorio/inc-project-models-classification-detection-main/ResNet50.pt"  # Path to the weights file if needed #"/media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/03-Challenges/01-MAMA-MIA/01-Code/RadImageNet_pytorch/01-Pytorch/ResNet50.pt"
 
     # Available options
-    images_model_choices    = ["Inception", "ResNet", "ResNet18", "DenseNet"]
+    images_model_choices    = ["Inception", "ResNet", "ResNet18", "DenseNet", "CustomCNN"]
     activation_choices      = ["Linear", "ReLU", "Sigmoid", "LeakyReLU", "Tanh", "Gelu"]
 
     # Create argument parser with description
@@ -58,10 +58,21 @@ def get_options():
     parser.add_argument("--num_freeze",             type = int, default=5, help="Congelar la base del modelo?", )
     
     # Configuration of final model
-    parser.add_argument("--hidden_layers",              type=int, nargs="+", default=[256, 256], help="Capas ocultas del modelo final")
+    # nargs="*" (no "+"): FedMammoBench's configurable_mlp permite `hidden_layers: []` (un solo
+    # Linear(features, output_size) sin capa oculta -- exp28/31_antioverfit_base lo usan) para
+    # aislar el efecto de las capas ocultas del resto de la receta. "+" exige >=1 valor y no deja
+    # expresar esa config desde la CLI; "*" sí -- pasa `--hidden_layers` sin valores para vaciarla,
+    # o simplemente omite el flag para el default [256, 256].
+    parser.add_argument("--hidden_layers",              type=int, nargs="*", default=[256, 256], help="Capas ocultas del modelo final (vacío = --hidden_layers sin valores)")
     parser.add_argument("--output_size",                type=int, default=2, help="Número de clases de salida del modelo final")
     parser.add_argument("--activation",                 type=str, default="LeakyReLU", choices=activation_choices, help="Función de activación del modelo final: %(choices)s")
     parser.add_argument("--dropout",                    type=float, default=0.5, help="Tasa de abandono del modelo final")
+    # Puerto de FedMammoBench's ConfigurableMLPHead.input_dropout (src/models/mlp_configs/
+    # configurable_mlp.py): --dropout solo se aplica DENTRO del loop de capas ocultas, así
+    # que con --hidden_layers vacío (sin capas ocultas) no hay forma de pedir un Dropout
+    # antes del único Linear final -- --input_dropout llena ese hueco. Default 0.0 preserva
+    # el comportamiento de cualquier corrida existente (nadie lo pasaba antes de que existiera).
+    parser.add_argument("--input_dropout",              type=float, default=0.0, help="Dropout aplicado justo tras la entrada del modelo final (antes de cualquier capa oculta). 0.0 (default) lo omite, igual que antes de que este flag existiera.")
 
     # Add arguments for data loader configuration
     parser.add_argument("--channels",       type=int, default=3, help="Número de canales de la imagen")
@@ -69,6 +80,13 @@ def get_options():
     parser.add_argument('--img_size',       type=parse_tuple, help='Dimension de las imagenes de entrada en formato (height, width)', default=(224, 224))
     parser.add_argument("--normalize_mean", type=float, default=None, help="Media para T.Normalize (1 valor, se difunde a los 3 canales replicados). None = sin Normalize. Default = %(default)s")
     parser.add_argument("--normalize_std",  type=float, default=None, help="Desviación estándar para T.Normalize (1 valor). None = sin Normalize. Default = %(default)s")
+    parser.add_argument("--dataloader_seed", type=int, default=None, help="Semilla para un torch.Generator propio del shuffle del train DataLoader, independiente del RNG global. None (default) preserva el comportamiento de siempre (shuffle=True sin generator, lee del RNG global). Existe para la comparación de paridad con FedMammoBench (ver FedMammoBench/src/seed.py:make_generator) -- no lo actives fuera de esa comparación puntual.")
+    # Antes, main.py llamaba set_random_seed(42) hardcodeado ANTES incluso de parsear options --
+    # no había forma de variar la semilla desde la CLI. Este flag + el reorden en main.py (parsear
+    # options, LUEGO sembrar con options.seed) es lo que hace posible correr réplicas multi-semilla
+    # (42/43/44/45) del mismo patrón que FedMammoBench (ver exp34-36/64-69 en FedMammoBench/configs/)
+    # -- sin esto, "réplica con otra semilla" en INC eran 3 corridas idénticas.
+    parser.add_argument("--seed",            type=int, default=42, help="Semilla global (torch/numpy/random + cudnn determinista), ver main.py:set_random_seed(). Default = %(default)s, igual al comportamiento hardcodeado anterior.")
 
     # Add arguments for training parameters
     parser.add_argument("--init_epoch",     type=int, default=0, help="Epoca desde donde se inicia el entrenamiento")
@@ -77,7 +95,20 @@ def get_options():
     parser.add_argument("--lr",             type=float, default=1e-4, help="Taza de aprendizaje del modelo generador (Unet-GAN)")
     parser.add_argument("--b1",             type=float, default=0.5, help="Adam: decaimiento del impulso de primer orden del gradiente")
     parser.add_argument("--b2",             type=float, default=0.999, help="Adam: decaimiento del impulso de primer orden del gradiente")
-    
+    # weight_decay/backbone_lr: antes el optimizer era torch.optim.Adam plano, un solo param group
+    # a --lr, sin weight decay -- no había forma de reproducir la receta AdamW + LR discriminativo
+    # (backbone mucho más lento que la cabeza) que usa la serie hpsearch_v1/antioverfit de
+    # FedMammoBench (ver backbone_lr en FedMammoBench/src/cli.py). training.py ahora siempre
+    # construye AdamW (no Adam): con weight_decay=0.0 y backbone_lr=None (los defaults de acá)
+    # AdamW es matemáticamente idéntico a Adam, así que las corridas existentes (exp61-63) no
+    # cambian de comportamiento.
+    parser.add_argument("--weight_decay",   type=float, default=0.0, help="Weight decay desacoplado de AdamW (Loshchilov & Hutter 2019). Default 0.0 = sin regularización, igual que el Adam anterior.")
+    parser.add_argument("--backbone_lr",    type=float, default=None, help="LR propio para el backbone de imagen (model[0]), distinto de --lr (que queda para el clasificador, model[1]). None (default) = un solo param group a --lr, igual que antes.")
+    # label_smoothing: nn.CrossEntropyLoss no lo aplicaba (ni en la rama BCE-con-pesos de
+    # losses.get_loss ni en la rama sin balanceo). exp37_hpsearch_v1_e7u7fprr de FedMammoBench usa
+    # 0.0137 -- default 0.0 preserva el comportamiento anterior en ambas ramas.
+    parser.add_argument("--label_smoothing", type=float, default=0.0, help="Label smoothing de CrossEntropyLoss. Default 0.0 = sin suavizado, comportamiento anterior.")
+
     # Configuración EarlyStopping
     parser.add_argument("--patience_early", type=int, default=20, help="Patience para EarlyStopping")
 
