@@ -1,0 +1,50 @@
+activation: LeakyReLU
+activation_image_model: ReLU
+augmentation: True
+b1: 0.9
+b2: 0.999
+backbone_lr: None
+batch_size: 16
+best_model: True
+channels: 3
+class_balance: True
+csv_data_path: /media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/13-PregradoJulian/Federal Learning/infraestructura federada/inc_repro_data/csvs_norm_neg1_1
+dataloader_seed: None
+dropout: 0.0
+exp_name: exp64_custom_cnn_inc
+from_scratch: True
+gamma: 2.0
+hidden_layers: []
+image_model: CustomCNN
+images_dir: /media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/02-Databases/Mammo-Bench/c86fb00c-0fb8-4e0e-85a2-4d415f9c1ada_1a9410d8-9769-4064-a064-0160f2fd193d_DATASET-FILE_Mammo_Bench_zip_20241225112148174/Mammo_Data/Mammo-Bench/preproccesed_julian
+img_size: (224, 224)
+init_epoch: 0
+input_dropout: 0.4
+label_smoothing: 0.0
+loss: BCE
+lr: 0.001
+min_lr: 1e-06
+n_epochs: 100
+neg_weight: 0.7593
+normalize_mean: None
+normalize_std: None
+num_freeze: 0
+output_size: 2
+path_image_model: /home/akira/Escritorio/inc-project-models-classification-detection-main/ResNet50.pt
+patience_early: 50
+pos_weight: 1.4642
+pretrained: False
+result_dir: /media/imagenesmedicas/DATA1/01-ImagenesMedicas-US1/13-PregradoJulian/Federal Learning/infraestructura federada/INC/results
+seed: 42
+tag_exp: ['inc', 'custom_cnn']
+test: False
+train: True
+wandb_group: custom_cnn
+wandb_project: fedmammobench2.0
+weight_decay: 0.0001
+
+--------------- Time Training ------------------
+Tiempo de entrenamiento: 0 horas y 37 minutos
+
+--------------- Time Training ------------------
+Tiempo de entrenamiento: 0 horas y 37 minutos
