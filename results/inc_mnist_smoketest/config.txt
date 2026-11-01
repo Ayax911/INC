@@ -1,0 +1,41 @@
+activation: LeakyReLU
+activation_image_model: ReLU
+augmentation: False
+b1: 0.9
+b2: 0.999
+batch_size: 128
+best_model: True
+channels: 3
+class_balance: True
+csv_data_path: ../../../manifest/mnist_smoketest
+dropout: 0.3
+exp_name: inc_mnist_smoketest
+from_scratch: True
+gamma: 2.0
+hidden_layers: [128]
+image_model: ResNet18
+images_dir: /home/akira/snap/steam/mnist/images_tif64
+img_size: (64, 64)
+init_epoch: 0
+loss: BCE
+lr: 0.001
+min_lr: 1e-06
+n_epochs: 3
+neg_weight: 1.0
+normalize_mean: None
+normalize_std: None
+num_freeze: 0
+output_size: 2
+path_image_model: /home/akira/Escritorio/inc-project-models-classification-detection-main/ResNet50.pt
+patience_early: 100
+pos_weight: 1.0
+pretrained: False
+result_dir: ../../../results
+tag_exp: ['smoketest', 'mnist']
+test: False
+train: True
+wandb_group: None
+wandb_project: inc-mnist-smoketest
+
+--------------- Time Training ------------------
+Tiempo de entrenamiento: 0 horas y 2 minutos
